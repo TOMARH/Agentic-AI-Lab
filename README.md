@@ -28,3 +28,8 @@ The repository will grow incrementally: agent foundations, Azure platform and in
 - [Architecture decisions](docs/adr/README.md)
 - [Labs and sprint notes](docs/labs/README.md)
 - [Tools & Technology](docs/tools/README.md)
+
+## Sprint starting point
+
+- [Day 1: Azure cost guardrails and subscription readiness](docs/labs/azure-sprint-day-01.md)
+

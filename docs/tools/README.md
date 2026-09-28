@@ -35,3 +35,5 @@ Maintain a record for each tool or technology encountered or installed during th
 ### Enterprise relevance
 
 CLI agents combine model reasoning with file and command tools. Workspace scope, sandbox boundaries, approval controls, and lifecycle hooks are separate security controls. Document the configured values and approval decisions that affect each team workflow.
+
+| Chocolatey | Available; attempted for GitHub CLI installation | Not elevated in this session; the confirmation prompt timed out, so `gh` was not installed. Retry from a normal authorized install path and record the verified version. |
