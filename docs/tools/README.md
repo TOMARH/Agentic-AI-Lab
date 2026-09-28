@@ -9,7 +9,9 @@ Maintain a record for each tool or technology encountered or installed during th
 | Python | Project runtime | Pinned dependencies are in `requirements.txt`; exact interpreter version has not been recorded. |
 | Gemini API / `google-genai` | Used by `hello_gemini.py` | Reads `GEMINI_API_KEY` from `.env` through `python-dotenv`. |
 | Git for Windows | Available; version 2.53.0.windows.2 observed | Used for local version control. |
-| GitHub CLI (`gh`) | Available; version 2.101.0 observed on 2026-09-28 | `gh auth status` reported that the saved GitHub credential is invalid. No credential or token was recorded. Re-authenticate through the normal authorized login flow before using authenticated commands. |
+| GitHub CLI (`gh`) | Available; version 2.101.0 observed on 2026-09-28 | Installation source and authentication method were not verified. `gh auth status` reported that the saved credential is invalid. No account identifier, credential, or token is recorded. Re-authenticate through the normal authorized login flow before using authenticated commands. |
+| Azure CLI (`az`) | Available; version not recorded | `az account show` and resource listing could not access the Azure CLI profile because of a permission error. Azure account and inventory details remain unverified. |
+| Chocolatey | Available | A GitHub CLI installation attempt was made, but its confirmation prompt timed out; that attempt did not install `gh`. The source of the currently available `gh` installation is unknown. |
 | Codex CLI | 0.157.1, as recorded during the learning session | Windows setup, non-elevated launch, workspace trust, hook review, permissions, and troubleshooting are covered below. |
 
 ## Codex CLI (Windows)
@@ -35,5 +37,3 @@ Maintain a record for each tool or technology encountered or installed during th
 ### Enterprise relevance
 
 CLI agents combine model reasoning with file and command tools. Workspace scope, sandbox boundaries, approval controls, and lifecycle hooks are separate security controls. Document the configured values and approval decisions that affect each team workflow.
-
-| Chocolatey | Available; previously attempted for GitHub CLI installation | The installation confirmation prompt timed out. GitHub CLI is now present on PATH; the installation source was not verified in this session. |
