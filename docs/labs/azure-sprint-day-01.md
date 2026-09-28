@@ -32,10 +32,12 @@ Draw the boundary for the first Azure lab without deploying it:
 Azure subscription
 └── dedicated learning resource group
     ├── budget scope and cost tags
-    └── one explicitly selected lab resource (later day)
+    └── proposed Azure Queue Storage account/queue (design only; not deployed)
 ```
 
-For the proposed resource, record its purpose, region, pricing meter, expected hours/days active, data retention, dependencies, deletion procedure, and likely residual-cost sources. Estimate cost with the Azure Pricing Calculator immediately before provisioning; prices and free offers vary by region, offer, and date.
+**Design-only proposal: Azure Queue Storage.** Use one queue to let a later lab decouple a producer from a background worker. Choose the storage account type, redundancy, and region only after confirming the lab's requirements and current pricing. Keep messages non-sensitive and short-lived; set a retention/cleanup plan, identify the producer and worker dependencies, and delete the queue and account after the exercise. Check for residual costs from retained data, transactions, redundancy, and any dependent compute. This is a proposal only: no storage account or queue has been created.
+
+For any proposed resource, record its purpose, region, pricing meter, expected hours/days active, data retention, dependencies, deletion procedure, and likely residual-cost sources. Estimate cost with the Azure Pricing Calculator immediately before provisioning; prices and free offers vary by region, offer, and date.
 
 ## Decision record to fill in
 
@@ -47,6 +49,24 @@ For the proposed resource, record its purpose, region, pricing meter, expected h
 - Budget scope and thresholds:
 - First lab resource and region (not deployed on Day 1):
 - Cleanup owner and date:
+
+## Day 1 verified status
+
+This record reflects evidence available in the project workspace on 2026-09-28. No authenticated Azure Portal session or verified Portal values were available during this update. Values that could not be verified are called out explicitly; do not treat the suggested thresholds above as configured alerts.
+
+| Item | Verified status |
+|---|---|
+| Monthly learning budget | Not recorded or verified. No amount, currency, scope, owner, or reset date is present in the project notes. |
+| Alert thresholds | 50%, 75%, 90%, and 100% are planning suggestions only. No configured budget or actual/forecast alert was verifiable. |
+| Azure subscription | Not verified. No authenticated Portal session was available, and the Azure CLI read-only account query could not run because the CLI profile was denied access. No subscription identifier or account details were read or copied. |
+| Azure resource inventory | Not verified. The Portal was unavailable and CLI resource listing could not run because the profile was inaccessible; this record does not assert that the subscription has no resources. |
+| Day 1 provisioning | No Azure resources were provisioned as part of this workspace documentation update. |
+
+Before treating Day 1 guardrails as complete, confirm the subscription, budget, thresholds, alert recipients, and resource inventory in an authorized Azure Portal or CLI session. Record only non-secret details here.
+
+## Tools & Technology notes
+
+See the shared [Tools & Technology inventory](../tools/README.md) for the project tool list and session notes. For this Day 1 check, Azure CLI (`az`) was present on PATH, but commands could not access its profile due to a permission error. No authenticated Azure Portal session was available. Therefore the active account, subscription, budgets, alerts, and resource list remain unverified. Do not copy profile contents, credentials, tokens, or other secrets into this document.
 
 ## Evidence and limitations
 
