@@ -13,8 +13,7 @@ client = genai.Client(api_key=api_key)
 
 interaction = client.interactions.create(
     model="gemini-3.6-flash",
-    ##input="Explain in one sentence what an AI agent is. respond in hindi"
-    input="Bollywood mein Kajol ya naye purane kinhi bhi actors ke najayaz sambandh hue hai. in hindi"
+    input="Explain in Hindi, in one sentence, what an AI agent is."
 )
 
 print(interaction.output_text)
