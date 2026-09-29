@@ -1,78 +1,176 @@
-# Azure sprint: Day 1 — Cost guardrails and subscription readiness
+# Azure sprint: Day 1 — Subscription readiness, Storage, and Managed Identity
 
-## Goal
+## 1. Day 1 objective
 
-Establish a low-risk Azure learning boundary before provisioning anything. Day 1 is complete when the subscription and spending model are understood, an appropriate budget and alerts are configured (if the account supports them), and the first lab has a written cleanup plan.
+Establish the cost guardrails for the Azure learning work, inspect the existing storage baseline, create a UAMI, and configure account-scoped Blob data authorization for it. The identity and role assignment were verified. Day 1 did **not** demonstrate UAMI-based Blob access from an Azure-hosted workload.
 
-## Guardrails
+## 2. Subscription and cost guardrails
 
-1. **Identify the subscription and offer first.** Record the offer type, billing currency, whether credits or a spending limit apply, and who receives billing alerts. Do not remove or upgrade a spending limit as part of this lab.
-2. **Use a monthly budget before deployment.** Review the existing subscription budget and decide whether it is sufficient for the lab; create a separate learning budget only if needed. Record its currency, scope, owner, and reset date. Do not treat an Azure budget as a spending cap: budget alerts inform you but do not stop consumption by themselves.
-3. **Review actual and forecast alerts.** The verified monthly subscription budget has actual-cost alerts at 25%, 50%, 75%, and 90%. Confirm the recipients in the Portal. Forecast alert thresholds remain unverified; configure them if needed before provisioning. Azure cost evaluation and alert delivery can be delayed, so retain a manual check before and after labs.
-4. **Keep the first lab small and short-lived.** Use a dedicated resource group, consistent tags (`Project=Agentic-AI-Lab`, `Environment=Learning`, `Owner`, `ExpiresOn`), and only the resources required by the lab. Prefer free/low-cost options only after confirming their limits and region availability.
-5. **Clean up and verify.** Delete lab resources after validation unless the next exercise needs them. Recheck Cost Analysis and free-tier usage after cleanup; residual charges can persist for storage, logs, public IPs, or other retained resources.
-6. **No secrets in Git.** Azure credentials, subscription IDs if treated as sensitive in the environment, API keys, and exported access tokens do not belong in committed files. Use identity-based authentication in later labs where suitable.
-
-## Day 1 checklist
-
-- [ ] Sign in to Azure Portal and identify the correct directory and subscription; record only a safe display name and offer type in lab notes.
-- [ ] Confirm billing currency, remaining credits, spending-limit status, and notification contacts.
-- [ ] Open Cost Management + Billing → Cost Management → Budgets and inspect current month-to-date cost and forecast.
-- [ ] Review the existing subscription budget before creating any additional budget; document a separate learning-only budget only if one is needed.
-- [ ] Verify recipients for the configured actual-cost alerts at 25%, 50%, 75%, and 90%; review or configure forecast alerts before provisioning.
-- [ ] Confirm whether an existing subscription spending limit applies. Leave it unchanged.
-- [ ] Create no paid resources until the budget and alerts are confirmed. If the offer does not support the desired budget/alerts, pause provisioning and use manual cost checks plus the offer's native controls.
-- [ ] Record the baseline and guardrail decisions in the sprint notes.
-
-## Day 1 design exercise
-
-Draw the boundary for the first Azure lab without deploying it:
-
-```text
-Azure subscription
-├── configured monthly budget (subscription scope)
-└── existing resource group: `rg-ai-azure-integration-lab`
-    ├── tags: unverified
-    └── existing storage account: `saaiazureintegrationlab`
-        └── proposed Azure Queue Storage queue (not created)
-```
-
-**Design-only proposal: Azure Queue Storage.** Add a queue to the existing storage account to let a later lab decouple a producer from a background worker. Confirm that the account supports the selected queue service and review its configuration and pricing before use. Keep messages non-sensitive and short-lived; set a retention/cleanup plan, identify producer and worker dependencies, and delete the proposed queue after the exercise if no longer needed. Check for residual costs from retained data, transactions, redundancy, and any dependent compute. The resource group and storage account already exist; the queue is only a proposal and has not been created.
-
-For any proposed resource, record its purpose, region, pricing meter, expected hours/days active, data retention, dependencies, deletion procedure, and likely residual-cost sources. Estimate cost with the Azure Pricing Calculator immediately before provisioning; prices and free offers vary by region, offer, and date.
-
-## Decision record to fill in
-
-- Subscription offer/type:
-- Billing currency:
-- Existing spending limit / credit (do not include account secrets):
-- Separate learning-only budget (if any):
-- Alert recipients confirmed:
-- Existing subscription budget and scope:
-- Actual-cost alert thresholds / forecast thresholds:
-- First lab resource and region (not deployed on Day 1):
-- Cleanup owner and date:
-
-## Day 1 verified status
-
-This record reflects project evidence and Azure Portal details shared in the conversation as of 2026-09-28. Values that could not be verified are called out explicitly; only the listed actual-cost thresholds are confirmed as configured.
+The lab began with a cost-readiness checkpoint: review the existing subscription budget and its notifications before provisioning, and treat budget alerts as information rather than a hard spending cap. The existing subscription budget was sufficient as the documented guardrail; no separate learning-only budget is recorded.
 
 | Item | Verified status |
 |---|---|
-| Current monthly subscription budget | `budget-agentic-ai-lab-sub-monthly`; ₹19,109.25; monthly reset; expires October 19, 2026 (confirmed by Azure Portal evidence shared in the conversation). |
-| Previous budget cleanup | `AzureIntegrationServices-HandOn` was deleted (confirmed by Azure Portal evidence shared in the conversation). |
-| Separate learning-only budget | No separate project-only budget was identified in the evidence; the verified subscription budget is listed above. |
-| Actual-cost alert thresholds | 25%, 50%, 75%, and 90% are configured (confirmed by Azure Portal evidence shared in the conversation). Forecast alert thresholds remain unverified. |
-| Azure subscription details | Not verified. The budget evidence confirms a subscription-scoped budget and its amount in rupees, but does not establish the subscription display name, offer, credits, or spending-limit status. The Azure CLI account query could not run because its profile was denied access. |
-| Azure resources | Portal evidence confirms resource group `rg-ai-azure-integration-lab` and storage account `saaiazureintegrationlab` exist. Their tags are unverified; the Queue Storage queue remains a proposal. A complete resource inventory is unavailable because CLI listing could not run with the inaccessible profile. |
-| Day 1 provisioning and cleanup | No new lab resources were created as part of this documentation update. The previous budget deletion is recorded above; this does not verify whether other resources already exist in the subscription. |
+| Subscription budget | `budget-agentic-ai-lab-sub-monthly` |
+| Budget amount and currency | ₹19,109.25 per month |
+| Reset / expiry | Monthly reset; expires October 19, 2026 |
+| Actual-cost alert thresholds | 25%, 50%, 75%, and 90% configured |
+| Forecast alert thresholds | Not verified in the evidence available for this lab |
+| Previous budget cleanup | `AzureIntegrationServices-HandOn` had been deleted |
+| Offer, credits, spending-limit status | Not verified; no such claims are made here |
 
-Before treating Day 1 guardrails as complete, confirm the subscription, budget, thresholds, alert recipients, and resource inventory in an authorized Azure Portal or CLI session. Record only non-secret details here.
+The actual alert thresholds and budget details were confirmed from Azure Portal evidence shared during the lab. Alert recipients and forecast thresholds were not established in the verified record. Budgets notify; they do not themselves stop resource use. Azure cost data and alert delivery can lag, so manual review remains useful before and after lab work.
 
-## Tools & Technology notes
+The engineering checkpoint was to keep the first exercise on already-existing resources where possible, check cost implications, and avoid treating an alert as a spending limit. No budget change is recorded as part of the storage identity work below.
 
-See the shared [Tools & Technology inventory](../tools/README.md) for the project tool list and session notes. For this Day 1 check, Azure CLI (`az`) was present on PATH, but commands could not access its profile due to a permission error. Azure Portal evidence shared in the conversation confirms the subscription-scoped monthly budget, deletion of the previous budget, resource group `rg-ai-azure-integration-lab`, and storage account `saaiazureintegrationlab`. Resource tags and the complete resource inventory remain unverified. Do not copy profile contents, credentials, tokens, or other secrets into this document.
+## 3. Storage baseline
 
-## Evidence and limitations
+The existing storage account was `saaiazureintegrationlab` in Central India. Its baseline was `StorageV2` / `Standard_LRS`, HTTPS-only enabled, minimum TLS 1.2, and public Blob access disabled. The existing containers were `incoming` and `processed`.
 
-Azure budgets are alerting and accountability tools; budget alerts do not automatically stop resource usage. A subscription spending limit, when available for the offer, is a distinct mechanism with different service-impact behavior. Cost reporting and free-service usage can be delayed. Confirm current offer-specific behavior in the Azure portal before relying on it.
+This baseline shaped the access decision: retain private access and use an identity plus RBAC for authenticated data access. A proposed Queue Storage exercise from earlier planning was not part of the completed lab and is omitted from the final resource state.
+
+## 4. Managed Identity
+
+A user-assigned managed identity named `uami-agentic-ai-lab-storage` was created. Azure automatically registered the `Microsoft.ManagedIdentity` resource provider as part of this work. The identity was opened and verified in Azure Portal.
+
+A UAMI has a lifecycle independent of a particular compute resource and can be attached to an Azure-hosted workload later. Its creation and portal verification establish the identity resource; they do not prove that a workload can obtain its token or use it against Blob Storage.
+
+## 5. Authentication vs authorization
+
+Authentication establishes **who** is making a request. Authorization determines **what** that identity can do and **where** it can do it. The UAMI is the security principal. The Blob data role assignment is the authorization rule. Creating the identity alone does not grant storage access, and assigning a role alone does not prove token acquisition or successful data operations from a workload.
+
+## 6. RBAC and least privilege
+
+`Storage Blob Data Contributor` was assigned to the UAMI. This is a Blob data-plane role, separate from management-plane roles used to manage the storage account resource. The assignment scope is the storage account only.
+
+The scope decision was to grant the needed Blob role on `saaiazureintegrationlab`, rather than at resource-group or subscription scope, to constrain the identity's access to the intended account. A narrower container scope could be evaluated later if the workload's needs and setup support it. The account's public Blob access remains disabled.
+
+### Commands: executed/verified, reproduction-only, and rollback-only
+
+#### Actually executed/verified during the lab
+
+The lab record confirms these operations were executed and verified during the lab:
+
+- Inspected storage account `saaiazureintegrationlab` and its configuration.
+- Listed the storage account's containers; `incoming` and `processed` were present.
+- Listed and verified the user-assigned identity `uami-agentic-ai-lab-storage` in Azure CLI; the identity was also verified in Azure Portal.
+- Created `uami-agentic-ai-lab-storage`. Azure automatically registered `Microsoft.ManagedIdentity` during identity creation.
+- Created a `Storage Blob Data Contributor` role assignment for the UAMI at the storage-account scope.
+- Verified the role assignment through Azure CLI.
+- Listed the final resource inventory; it contained only the storage account and UAMI.
+
+Only the verified operations and outcomes are stated here. The separately labeled reproduction section provides command examples and is not presented as the literal transcript of these executed commands.
+
+#### Reproduction-only commands
+
+These commands are provided only to reproduce the setup. They are distinct from the operations executed and verified above. Set `$resourceGroup` to the resource group's actual name and sign in to the intended subscription first.
+
+```powershell
+$resourceGroup = "<existing-resource-group>"
+$accountName = "saaiazureintegrationlab"
+$identityName = "uami-agentic-ai-lab-storage"
+$subscriptionId = (az account show --query id --output tsv)
+$accountId = "/subscriptions/$subscriptionId/resourceGroups/$resourceGroup/providers/Microsoft.Storage/storageAccounts/$accountName"
+
+# Inspect the account baseline
+az storage account show --resource-group $resourceGroup --name $accountName --output json
+
+# Create the UAMI; Azure registers Microsoft.ManagedIdentity if needed
+az identity create --resource-group $resourceGroup --name $identityName --location centralindia --output json
+
+# Assign the Blob data role at account scope
+$principalId = (az identity show --resource-group $resourceGroup --name $identityName --query principalId --output tsv)
+az role assignment create --assignee-object-id $principalId --assignee-principal-type ServicePrincipal --role "Storage Blob Data Contributor" --scope $accountId --output json
+```
+
+### Working prompts and architectural checkpoints
+
+- Establish cost guardrails before provisioning; review the existing budget and alerts without treating alerts as a spending cap.
+- Keep the repository and Azure resource footprint clean; avoid unrelated files and unnecessary resources.
+- Use a UAMI instead of embedding credentials in workload configuration.
+- Verify identity existence and RBAC authorization independently; neither check substitutes for the other.
+- Do not create extra Azure infrastructure merely to manufacture proof of workload Blob access; defer that demonstration to a lab with a real workload need.
+- Record meaningful setup decisions, commands, and verification checkpoints so the work can be reproduced later.
+
+## 7. Validation evidence
+
+- **Cost readiness:** Azure Portal evidence shared during the lab showed the monthly subscription budget, ₹19,109.25 amount, monthly reset, October 19, 2026 expiry, and configured 25%, 50%, 75%, and 90% actual-cost alerts. Forecast alert thresholds and recipients were not verified in the documented evidence.
+- **Storage baseline:** the existing account properties and its `incoming` and `processed` containers are the recorded baseline.
+- **Identity:** `uami-agentic-ai-lab-storage` was verified in Azure Portal.
+- **Provider:** `Microsoft.ManagedIdentity` was automatically registered during identity creation.
+- **RBAC:** Azure CLI verification confirmed `Storage Blob Data Contributor` for the UAMI at the storage-account scope.
+- **Inventory:** final Azure CLI inventory contained only the storage account and the UAMI.
+- **Workload access:** Actual UAMI-based Blob access from an Azure-hosted workload has NOT been demonstrated.
+
+## 8. Architecture decisions / ADRs
+
+### ADR 1 — Cost guardrail
+
+**Decision:** Use the existing monthly subscription budget and its configured actual-cost alerts as the cost-monitoring baseline; do not represent a budget as a spending cap.
+
+**Reasoning:** The budget and alert thresholds were already in place and verified. A separate lab budget was not needed for the documented work. Unknown forecast thresholds and recipients remain unclaimed.
+
+### ADR 2 — Identity and storage authorization
+
+**Decision:** Create a UAMI and grant it `Storage Blob Data Contributor` at the storage-account scope.
+
+**Reasoning:** A separately managed identity can later be attached to the workload. Account scope limits the permission boundary to the target storage account, while public Blob access remains disabled.
+
+**Status:** Identity creation, portal verification, role assignment, and CLI verification are complete. Workload attachment, token acquisition, and Blob access are deferred to the next lab.
+
+## 9. Cost considerations
+
+The monthly budget is ₹19,109.25 with a monthly reset and the actual-cost thresholds listed above; these alerts inform monitoring but do not stop consumption. Storage costs can vary with stored data, transactions, redundancy, region, and enabled features. `Standard_LRS` is the configured redundancy SKU. The existing storage account and retained data may continue to incur charges; review current Azure cost data when planning further exercises. No specific spend or savings outcome is asserted.
+
+## 10. Cleanup / rollback
+
+No cleanup of the storage account or containers is part of this lab; both pre-existed and are needed by the next exercise. If the identity grant is to be rolled back, remove the role assignment at the same account scope, verify it is absent, and then delete the UAMI if it is no longer needed. These are rollback-only commands; they are not reproduction setup steps and were not executed during this lab:
+
+```powershell
+az role assignment delete --assignee $principalId --role "Storage Blob Data Contributor" --scope $accountId
+az role assignment list --assignee $principalId --scope $accountId --include-inherited --query "[?roleDefinitionName=='Storage Blob Data Contributor']" --output table
+az identity delete --resource-group $resourceGroup --name $identityName
+```
+
+Do not delete the storage account or its existing containers as part of identity rollback. The deleted budget `AzureIntegrationServices-HandOn` is recorded as prior cleanup, not as a cleanup action performed in this identity exercise.
+
+## 11. Final resource state
+
+The final inventory contains only:
+
+- Storage account `saaiazureintegrationlab` (Central India, `StorageV2` / `Standard_LRS`, HTTPS-only, minimum TLS 1.2, public Blob access disabled), with existing containers `incoming` and `processed`.
+- User-assigned managed identity `uami-agentic-ai-lab-storage`, with `Storage Blob Data Contributor` assigned at the storage-account scope.
+
+No workload resource was part of the final inventory. Actual UAMI-based Blob access from an Azure-hosted workload has **NOT** been demonstrated.
+
+## 12. Reproduction checklist
+
+1. Sign in to the intended Azure tenant and subscription; inspect the existing budget and confirm amount, reset, expiry, alert thresholds, and recipients where available. Treat budget alerts as notifications, not a cap.
+2. Locate the existing resource group and inspect `saaiazureintegrationlab` in Central India.
+3. Confirm `StorageV2`, `Standard_LRS`, HTTPS-only, minimum TLS 1.2, public Blob access disabled, and containers `incoming` and `processed`.
+4. Create `uami-agentic-ai-lab-storage` in Central India. Allow Azure to register `Microsoft.ManagedIdentity` if required.
+5. Verify the UAMI in Azure Portal.
+6. Assign `Storage Blob Data Contributor` to the UAMI at the storage account resource ID only.
+7. Verify the role assignment and its scope through Azure CLI.
+8. Verify the final resource inventory contains only the storage account and UAMI.
+9. Keep workload access marked incomplete until an Azure-hosted workload obtains a token for the UAMI and successfully performs the intended Blob operation.
+10. Review current costs and retain a rollback plan before extending the lab.
+
+Section 6 separates commands actually executed and verified from reproduction-only setup commands. Section 10 contains rollback-only commands.
+
+## 13. Tools & technology documentation
+
+Azure Portal was used for cost-budget evidence and UAMI verification. Azure CLI was used to verify the RBAC assignment and resource inventory; the corresponding executed verification commands are listed in section 6. Services and concepts used include Azure Storage, Microsoft Entra managed identities, and Azure RBAC. See the shared [Tools & Technology inventory](../tools/README.md) for project-wide tool documentation.
+
+## 14. Interview takeaways
+
+- Authentication answers who the caller is; authorization defines permitted operations and scope.
+- Managed identities let supported Azure workloads use an Azure-managed identity without storing an application secret.
+- A UAMI is independently managed and can be attached to workloads, but creation does not prove workload access.
+- Azure RBAC combines principal, role, and scope; Blob data-plane permissions differ from management-plane permissions.
+- Least privilege includes choosing both a suitable role and the narrowest workable scope.
+- A budget alert is a monitoring signal, not an automatic spending stop.
+- Validate the complete path—identity availability, token acquisition, authorization, and actual data operation—before claiming access works.
+
+## 15. Next-lab dependency
+
+The next lab depends on the existing storage account and containers, the UAMI, and its account-scoped Blob role assignment. It must make the UAMI available to an Azure-hosted workload, acquire a token through the platform identity endpoint or SDK, and perform and verify a Blob operation. Until then, UAMI-based workload access remains undemonstrated.
