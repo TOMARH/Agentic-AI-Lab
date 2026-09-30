@@ -173,4 +173,4 @@ Azure Portal was used for cost-budget evidence and UAMI verification. Azure CLI 
 
 ## 15. Next-lab dependency
 
-The next lab depends on the existing storage account and containers, the UAMI, and its account-scoped Blob role assignment. It must make the UAMI available to an Azure-hosted workload, acquire a token through the platform identity endpoint or SDK, and perform and verify a Blob operation. Until then, UAMI-based workload access remains undemonstrated.
+Day 2 completed this dependency: the existing UAMI was attached to an Azure-hosted Function, and the deployed Function listed the existing incoming Blob container using identity-based access. See [Azure sprint Day 2](azure-sprint-day-02.md) for the deployment record and validation evidence.
