@@ -192,7 +192,7 @@ Observed evidence:
 
 ## Review checkpoint
 
-No commit or push was made. Review the shared-account host/business storage arrangement and the account-scope Blob Data Owner assignment as part of the resulting state. The deployed Function currently supports the single required HTTP demonstration; expanding its trigger/binding set may require additional host-storage roles.
+Review the shared-account host/business storage arrangement and the account-scope Blob Data Owner assignment as part of the resulting state. The deployed Function currently supports the single required HTTP demonstration; expanding its trigger/binding set may require additional host-storage roles.
 
 ## Infrastructure as code
 
