@@ -5,12 +5,14 @@ import azure.functions as func
 from azure.identity import DefaultAzureCredential
 from azure.storage.blob import BlobServiceClient
 
+logger = logging.getLogger(__name__)
+
 app = func.FunctionApp()
 
 
 @app.route(route="BlobIdentityDemo", auth_level=func.AuthLevel.FUNCTION)
 def BlobIdentityDemo(req: func.HttpRequest) -> func.HttpResponse:
-    logging.info("BlobIdentityDemo function processed a request.")
+    logger.info("BlobIdentityDemo function processed a request.")
 
     storage_account_url = os.environ.get("BLOB_STORAGE_ACCOUNT_URL")
     container_name = os.environ.get("BLOB_CONTAINER_NAME", "incoming")
@@ -39,7 +41,7 @@ def BlobIdentityDemo(req: func.HttpRequest) -> func.HttpResponse:
         )
 
     except Exception:
-        logging.exception("Blob access failed.")
+        logger.exception("Blob access failed.")
         return func.HttpResponse(
             "Blob access failed. Check the Function configuration and Azure permissions.",
             status_code=500,
