@@ -1,0 +1,109 @@
+from types import SimpleNamespace
+from unittest.mock import Mock
+
+import function_app
+
+
+def test_missing_storage_url_returns_configuration_error(monkeypatch):
+    monkeypatch.delenv("BLOB_STORAGE_ACCOUNT_URL", raising=False)
+
+    response = function_app.BlobIdentityDemo(Mock())
+
+    assert response.status_code == 500
+    assert response.get_body().decode() == "BLOB_STORAGE_ACCOUNT_URL is not configured."
+
+
+def test_lists_blobs_with_managed_identity_credential(monkeypatch):
+    account_url = "https://example.blob.core.windows.net/"
+    credential = object()
+
+    monkeypatch.setenv("BLOB_STORAGE_ACCOUNT_URL", account_url)
+    monkeypatch.setenv("BLOB_CONTAINER_NAME", "incoming")
+
+    container_client = Mock()
+    container_client.list_blobs.return_value = [
+        SimpleNamespace(name="alpha.txt"),
+        SimpleNamespace(name="beta.txt"),
+    ]
+
+    blob_service_client = Mock()
+    blob_service_client.get_container_client.return_value = container_client
+
+    credential_factory = Mock(return_value=credential)
+    client_factory = Mock(return_value=blob_service_client)
+    monkeypatch.setattr(function_app, "DefaultAzureCredential", credential_factory)
+    monkeypatch.setattr(function_app, "BlobServiceClient", client_factory)
+
+    response = function_app.BlobIdentityDemo(Mock())
+
+    credential_factory.assert_called_once_with()
+    client_factory.assert_called_once_with(
+        account_url=account_url,
+        credential=credential,
+    )
+    blob_service_client.get_container_client.assert_called_once_with("incoming")
+    assert response.status_code == 200
+    assert response.get_body().decode() == (
+        "Container 'incoming' contains 2 blob(s): alpha.txt, beta.txt"
+    )
+
+
+def test_defaults_to_incoming_container(monkeypatch):
+    monkeypatch.setenv(
+        "BLOB_STORAGE_ACCOUNT_URL",
+        "https://example.blob.core.windows.net/",
+    )
+    monkeypatch.delenv("BLOB_CONTAINER_NAME", raising=False)
+
+    container_client = Mock()
+    container_client.list_blobs.return_value = []
+    blob_service_client = Mock()
+    blob_service_client.get_container_client.return_value = container_client
+
+    monkeypatch.setattr(
+        function_app,
+        "DefaultAzureCredential",
+        Mock(return_value=object()),
+    )
+    monkeypatch.setattr(
+        function_app,
+        "BlobServiceClient",
+        Mock(return_value=blob_service_client),
+    )
+
+    response = function_app.BlobIdentityDemo(Mock())
+
+    blob_service_client.get_container_client.assert_called_once_with("incoming")
+    assert response.status_code == 200
+    assert response.get_body().decode() == "Container 'incoming' contains 0 blob(s): "
+
+
+def test_blob_error_returns_generic_server_error(monkeypatch):
+    monkeypatch.setenv(
+        "BLOB_STORAGE_ACCOUNT_URL",
+        "https://example.blob.core.windows.net/",
+    )
+
+    container_client = Mock()
+    container_client.list_blobs.side_effect = RuntimeError("private error details")
+    blob_service_client = Mock()
+    blob_service_client.get_container_client.return_value = container_client
+
+    monkeypatch.setattr(
+        function_app,
+        "DefaultAzureCredential",
+        Mock(return_value=object()),
+    )
+    monkeypatch.setattr(
+        function_app,
+        "BlobServiceClient",
+        Mock(return_value=blob_service_client),
+    )
+
+    response = function_app.BlobIdentityDemo(Mock())
+
+    assert response.status_code == 500
+    assert response.get_body().decode() == (
+        "Blob access failed. Check the Function configuration and Azure permissions."
+    )
+    assert "private error details" not in response.get_body().decode()
