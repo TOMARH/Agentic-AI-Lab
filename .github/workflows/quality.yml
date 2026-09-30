@@ -36,4 +36,4 @@ jobs:
         run: ruff check .
 
       - name: Tests and coverage
-        run: pytest --cov=function_app --cov-report=term-missing --cov-fail-under=85
+        run: python -m pytest --cov=function_app --cov-report=term-missing --cov-fail-under=85
