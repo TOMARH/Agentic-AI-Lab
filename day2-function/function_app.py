@@ -46,3 +46,22 @@ def BlobIdentityDemo(req: func.HttpRequest) -> func.HttpResponse:
             "Blob access failed. Check the Function configuration and Azure permissions.",
             status_code=500,
         )
+
+@app.function_name(name="ServiceBusQueueConsumer")
+@app.service_bus_queue_trigger(
+    arg_name="message",
+    queue_name="integration-events",
+    connection="ServiceBusConnection",
+)
+def ServiceBusQueueConsumer(message: func.ServiceBusMessage) -> None:
+    """Consume a queue message; leave business payloads out of application logs."""
+    body = message.get_body()
+    # Decode to fail and retry malformed text messages; successful returns are
+    # completed by the Functions Service Bus extension's auto-complete behavior.
+    body.decode("utf-8")
+    logger.info(
+        "Processed Service Bus message id=%s content_type=%s bytes=%d",
+        message.message_id,
+        message.content_type,
+        len(body),
+    )

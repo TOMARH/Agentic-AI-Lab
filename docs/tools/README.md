@@ -6,11 +6,11 @@ Maintain a record for each tool or technology encountered or installed during th
 
 | Tool or technology | Observed state | Notes |
 |---|---|---|
-| Python | Project runtime | Pinned dependencies are in `requirements.txt`; exact interpreter version has not been recorded. |
+| Python | 3.14.4 used for Day 4 local quality checks | Runtime dependencies are pinned in `day2-function/requirements.txt`; local checks used the ignored project `.venv`. |
 | Gemini API / `google-genai` | Used by `hello_gemini.py` | Reads `GEMINI_API_KEY` from `.env` through `python-dotenv`. |
 | Git for Windows | Available; version 2.53.0.windows.2 observed | Used for local version control. |
-| GitHub CLI (`gh`) | Available; version 2.101.0 observed on 2026-09-28 | Installation source and authentication method were not verified. `gh auth status` reported that the saved credential is invalid. No account identifier, credential, or token is recorded. Re-authenticate through the normal authorized login flow before using authenticated commands. |
-| Azure CLI (`az`) | Available; version not recorded | `az account show` and resource listing could not access the Azure CLI profile because of a permission error. Azure account and inventory details remain unverified. |
+| GitHub CLI (`gh`) | 2.101.0; authenticated on 2026-10-02 | `gh auth status` confirmed the active TOMARH account through Windows keyring with repo/workflow scopes. Installation source is not verified. Credential values are never recorded. |
+| Azure CLI (`az`) | 2.88.0; authenticated on 2026-10-02 | Used subscription e5939949-6509-48de-964b-5f1b65c34714 for resource inventory, provider registration, what-if/deployment, settings, and REST operations. Bicep CLI 0.47.16 is available through `az bicep`. The Azure profile required an elevated command context; no token is recorded. |
 | Chocolatey | Available | A GitHub CLI installation attempt was made, but its confirmation prompt timed out; that attempt did not install `gh`. The source of the currently available `gh` installation is unknown. |
 | Codex CLI | 0.157.1, as recorded during the learning session | Windows setup, non-elevated launch, workspace trust, hook review, permissions, and troubleshooting are covered below. |
 
@@ -37,3 +37,13 @@ Maintain a record for each tool or technology encountered or installed during th
 ### Enterprise relevance
 
 CLI agents combine model reasoning with file and command tools. Workspace scope, sandbox boundaries, approval controls, and lifecycle hooks are separate security controls. Document the configured values and approval decisions that affect each team workflow.
+
+## Day 4 additions
+
+| Tool or technology | Observed state | Notes |
+|---|---|---|
+| Azure Service Bus Standard | Provisioned 2026-10-02 | Namespace sb-ai-int-likwmn7js4ffw and queue integration-events in Central India; local auth disabled, TLS 1.2 minimum, existing UAMIs, queue-scoped Sender/Receiver. Standard has a subscription-level base charge. |
+| Bicep / ARM deployment | Day 4 infrastructure | Declares namespace, queue and two queue-scoped role assignments; identities are existing. |
+| Azure Functions Service Bus binding | Day 4 consumer | Python v2 queue trigger; existing extension bundle range 4.x; identity-based connection settings; no connection string or Service Bus SDK package. Remote Linux package build used Flex deployment storage. |
+| Azure Logic Apps HTTP + Service Bus REST | Day 4 producer | Reuses HTTP action with Logic App UAMI and Service Bus audience; no extra API connection. |
+| PowerShell workflow helper | Day 4 deployment | Patches one Logic App action idempotently and preserves the rest of the definition; callback URL is never printed. |
