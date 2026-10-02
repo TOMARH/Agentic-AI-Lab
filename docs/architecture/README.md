@@ -1,7 +1,24 @@
 # Architecture
 
-## Current baseline
+## Current Azure integration flow
 
-This repository begins as a local Python learning project. `01_tool_calling/hello_gemini.py` reads `GEMINI_API_KEY` from the local environment via `python-dotenv` and sends input to the Gemini Interactions API. `first_agent.py` is currently a deterministic local lookup example; despite the folder name, it does not yet implement model-directed tool calling.
+    Logic App (Day 3)
+       | managed identity
+       v
+    Service Bus queue (Day 4) <-- Event Grid Storage system topic (Day 5)
+       |                                  ^
+       |                                  | BlobCreated in incoming
+       v                                  |
+    Python Function consumer       Existing Storage account
 
-Azure services and production architecture will be introduced incrementally, with identity, network boundaries, cost controls, observability, and lifecycle decisions recorded as they are designed.
+The Logic App and Event Grid are independent producers for the same queue. The Function consumer stays decoupled from both. Event Grid filters notifications; Service Bus durably buffers work.
+
+## Architecture principles
+
+- Reuse existing resources before provisioning duplicates.
+- Use managed identity and narrow Azure RBAC scopes.
+- Keep event notification distinct from durable work processing.
+- Treat event and queue delivery as at-least-once; design idempotent consumers.
+- Record retry, dead-letter, monitoring, cost, and lifecycle decisions with each integration lab.
+
+For implementation and evidence, see the [Day 4 Service Bus lab](../labs/azure-sprint-day-04.md) and [Day 5 Event Grid lab](../labs/azure-sprint-day-05.md).
