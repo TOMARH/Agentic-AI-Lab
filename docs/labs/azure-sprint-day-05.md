@@ -88,7 +88,7 @@ Never place keys, tokens, Function keys, callback URLs, or event payloads in com
 | Consumer outcome | Queue showed 0 active and 0 dead-letter messages shortly after successful delivery; the only queue trigger is the existing Function | Consistent with Function consumption/completion; direct Application Insights trace was not verified |
 | Cleanup | Smoke-test blob deleted; queue remained 0 active / 0 dead-letter; temporary dead-letter container and role assignment removed | No test message or unused dead-letter resource left behind |
 | Local quality gates | Ruff passed; pytest passed all 6 tests at 100% coverage | Existing Python checks pass; source remained unchanged |
-| CI / GitHub | Remote CI and PR checks not run; GitHub CLI authentication is invalid | PR and required remote check evidence remain pending |
+| PR / CI / review | PR #6 is open; required Python quality check passed. No formal review is recorded. GitHub reports main is not protected. | Do not merge until the review and main-branch protection mismatch are resolved |
 
 The Application Insights CLI query was not run because this Azure CLI installation did not have the optional application-insights extension and prompted for an interactive install. The extension was not installed. Runtime evidence uses built-in Azure Monitor Event Grid metrics and Service Bus queue counts.
 
