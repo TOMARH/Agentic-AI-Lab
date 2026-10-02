@@ -39,3 +39,6 @@ The day2-function-infrastructure deployment completed successfully on 2026-09-30
 ## Day 4 Service Bus
 
 day4-servicebus.bicep creates one Standard namespace and queue in the existing group, disables local auth, enforces TLS 1.2, and grants existing UAMIs Sender/Receiver at queue scope. Review with az deployment group what-if before deployment. A Standard namespace has a subscription-level base charge; delete it when no longer needed. See [the Day 4 lab record](../docs/labs/azure-sprint-day-04.md) for integration, validation and cleanup.
+## Day 5 Event Grid
+
+day5-eventgrid.bicep adds a Storage system topic and a filtered event subscription to the existing Day 4 queue. It references the Storage account, Service Bus namespace, and queue; it creates no new account, namespace, queue, identity, or Function. The system topic identity receives Azure Service Bus Data Sender only at integration-events. See the Day 5 lab record for validation, retry policy, cost, and cleanup.
