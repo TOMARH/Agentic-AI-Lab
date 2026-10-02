@@ -33,5 +33,9 @@ The day2-function-infrastructure deployment completed successfully on 2026-09-30
 - The two role-assignment resource names match the existing Azure assignment IDs so the template refers to the current grants instead of intentionally adding a second grant.
 - Both roles are at the existing storage-account scope. `Storage Blob Data Contributor` predates the Function deployment; `Storage Blob Data Owner` was added for Functions host storage. Sharing the account means the host role applies across its blob data.
 - The host connection uses `AzureWebJobsStorage__*`; the business SDK uses `BLOB_STORAGE_ACCOUNT_URL` and `BLOB_CONTAINER_NAME`. The two purposes are configured separately while reusing the existing account.
-- The Bicep file preserves the Function key auth level through the existing application source; the app route's `FUNCTION` auth level remains defined in `day2-function/function_app.py`.
+- Bicep does not manage Python route auth. The committed Day 2 source uses `FUNCTION`; the pre-existing unstaged local edit changes the route to `ANONYMOUS` for Day 3 Logic App managed-identity auth and is excluded from the Day 4 commit.
 - The Function App's `APPLICATIONINSIGHTS_CONNECTION_STRING` is read from the existing Insights resource at deployment. It is not a storage credential.
+
+## Day 4 Service Bus
+
+day4-servicebus.bicep creates one Standard namespace and queue in the existing group, disables local auth, enforces TLS 1.2, and grants existing UAMIs Sender/Receiver at queue scope. Review with az deployment group what-if before deployment. A Standard namespace has a subscription-level base charge; delete it when no longer needed. See [the Day 4 lab record](../docs/labs/azure-sprint-day-04.md) for integration, validation and cleanup.

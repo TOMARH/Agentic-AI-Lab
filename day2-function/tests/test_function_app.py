@@ -107,3 +107,30 @@ def test_blob_error_returns_generic_server_error(monkeypatch):
         "Blob access failed. Check the Function configuration and Azure permissions."
     )
     assert "private error details" not in response.get_body().decode()
+
+def test_service_bus_consumer_logs_metadata_without_body(caplog):
+    message_body = b'{"sensitive":"do-not-log"}'
+    message = Mock()
+    message.get_body.return_value = message_body
+    message.message_id = "message-123"
+    message.content_type = "application/json"
+
+    with caplog.at_level("INFO", logger=function_app.logger.name):
+        function_app.ServiceBusQueueConsumer(message)
+
+    assert "Processed Service Bus message id=message-123" in caplog.text
+    assert "content_type=application/json" in caplog.text
+    assert f"bytes={len(message_body)}" in caplog.text
+    assert "do-not-log" not in caplog.text
+
+
+def test_service_bus_consumer_raises_on_invalid_utf8():
+    message = Mock()
+    message.get_body.return_value = b"\xff"
+
+    try:
+        function_app.ServiceBusQueueConsumer(message)
+    except UnicodeDecodeError:
+        pass
+    else:
+        raise AssertionError("invalid UTF-8 should fail and be retried")
