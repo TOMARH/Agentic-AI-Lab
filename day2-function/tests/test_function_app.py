@@ -2,8 +2,9 @@ import json
 from types import SimpleNamespace
 from unittest.mock import Mock
 
-import function_app
 import pytest
+
+import function_app
 
 
 def test_missing_storage_url_returns_configuration_error(monkeypatch):
