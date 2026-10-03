@@ -14,30 +14,74 @@ app = func.FunctionApp()
 # In-memory store for idempotency tracking across invocations within the process instance
 PROCESSED_MESSAGE_IDS: set[str] = set()
 
-# W3C traceparent regex: version(2 hex)-trace_id(32 hex)-parent_id(16 hex)-trace_flags(2 hex)
-W3C_TRACEPARENT_PATTERN = re.compile(r"^([0-9a-f]{2})-([0-9a-f]{32})-([0-9a-f]{16})-([0-9a-f]{2})$")
+# Strict W3C traceparent regex: version 00-fe (rejecting ff), 32-hex trace-id, 16-hex parent-id, 2-hex flags
+_W3C_TRACEPARENT_PATTERN = re.compile(
+    r"^([0-9a-f]{2})-([0-9a-f]{32})-([0-9a-f]{16})-([0-9a-f]{2})$"
+)
+_ALL_ZEROS_TRACE_ID = "0" * 32
+_ALL_ZEROS_SPAN_ID = "0" * 16
+
+def _to_str(val: object) -> str | None:
+    """Safely decode bytes or convert object to string."""
+    if val is None:
+        return None
+    if isinstance(val, bytes):
+        return val.decode("utf-8", errors="replace").strip()
+    return str(val).strip()
 
 
-def extract_trace_context(message: func.ServiceBusMessage) -> dict[str, str]:
-    """Extract W3C trace context or correlation identifiers from message properties."""
-    app_props = getattr(message, "application_properties", {}) or {}
-    raw_traceparent = app_props.get("traceparent") or app_props.get("Diagnostic-Id") or ""
-    correlation_id = getattr(message, "correlation_id", None) or ""
+def extract_trace_context(message: object) -> dict[str, str | None]:
+    """Extract and validate W3C trace context, distinguishing trace_id from correlation_id."""
+    raw_props = getattr(message, "application_properties", {}) or {}
 
-    trace_id = ""
-    parent_span_id = ""
+    # AMQP properties may arrive with bytes or str keys/values
+    props: dict[str, str] = {}
+    if isinstance(raw_props, dict):
+        for k, v in raw_props.items():
+            str_k = _to_str(k)
+            str_v = _to_str(v)
+            if str_k and str_v:
+                props[str_k] = str_v
 
-    match = W3C_TRACEPARENT_PATTERN.match(str(raw_traceparent).strip())
-    if match:
-        trace_id = match.group(2)
-        parent_span_id = match.group(3)
-    elif correlation_id:
-        trace_id = str(correlation_id).strip()
+    raw_traceparent = props.get("traceparent") or props.get("Diagnostic-Id")
+
+    if raw_traceparent:
+        match = _W3C_TRACEPARENT_PATTERN.fullmatch(raw_traceparent)
+        if match:
+            version, trace_id, parent_span_id, _flags = match.groups()
+            # Spec compliance: version 'ff' is invalid; IDs cannot be all zeros
+            if (
+                version != "ff"
+                and trace_id != _ALL_ZEROS_TRACE_ID
+                and parent_span_id != _ALL_ZEROS_SPAN_ID
+            ):
+                source = "traceparent" if "traceparent" in props else "Diagnostic-Id"
+                return {
+                    "trace_id": trace_id,
+                    "parent_span_id": parent_span_id,
+                    "correlation_id": None,
+                    "trace_source": source,
+                }
+
+    # Fallback: correlation_id is application context, NOT a valid W3C trace ID
+    raw_corr = getattr(message, "correlation_id", None)
+    corr_str = _to_str(raw_corr)
+    if corr_str:
+        # Sanitize and cap length to prevent log-injection or cardinality explosion
+        sanitized_corr = re.sub(r"[^a-zA-Z0-9_\-\.:]", "", corr_str)[:64]
+        if sanitized_corr:
+            return {
+                "trace_id": None,
+                "parent_span_id": None,
+                "correlation_id": sanitized_corr,
+                "trace_source": "correlation_id",
+            }
 
     return {
-        "trace_id": trace_id,
-        "parent_span_id": parent_span_id,
-        "raw_traceparent": str(raw_traceparent),
+        "trace_id": None,
+        "parent_span_id": None,
+        "correlation_id": None,
+        "trace_source": "none",
     }
 
 
@@ -97,12 +141,23 @@ def service_bus_queue_consumer(message: func.ServiceBusMessage) -> None:
         )
         raise ValueError(f"Poison message delivery failure simulation for MessageId={message_id}")
 
+    trace_ctx = extract_trace_context(message)
     logger.info(
-        "Processed Service Bus message successfully. MessageId=%s, DeliveryCount=%d, TraceId=%s, ParentSpanId=%s",
-        message_id,
-        delivery_count,
-        trace_context["trace_id"],
-        trace_context["parent_span_id"],
+        "Consuming message: ID=%s, Enqueued=%s, DeliveryCount=%s, TraceSource=%s",
+            message.message_id,
+            getattr(message, "enqueued_time_utc", None),
+            getattr(message, "delivery_count", 1),
+            trace_ctx["trace_source"],
+            extra={
+            "customDimensions": {
+                "TraceId": trace_ctx["trace_id"],
+                "ParentSpanId": trace_ctx["parent_span_id"],
+                "CorrelationId": trace_ctx["correlation_id"],
+                "TraceSource": trace_ctx["trace_source"],
+                "MessageId": message.message_id,
+                "DeliveryCount": getattr(message, "delivery_count", 1),
+            }
+        },
     )
 
     # Track message ID to enforce consumer idempotency

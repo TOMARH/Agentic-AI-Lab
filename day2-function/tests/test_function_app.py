@@ -2,9 +2,8 @@ import json
 from types import SimpleNamespace
 from unittest.mock import Mock
 
-import pytest
-
 import function_app
+import pytest
 
 
 def test_missing_storage_url_returns_configuration_error(monkeypatch):
@@ -178,8 +177,10 @@ def test_extract_trace_context_correlation_id_fallback():
         application_properties={},
     )
     context = function_app.extract_trace_context(fake_message)
-    assert context["trace_id"] == "corr-cust-9988"
-    assert context["parent_span_id"] == ""
+    assert context["trace_id"] is None
+    assert context["parent_span_id"] is None
+    assert context["correlation_id"] == "corr-cust-9988"
+    assert context["trace_source"] == "correlation_id"
 
 
 def test_extract_trace_context_empty():
@@ -188,5 +189,55 @@ def test_extract_trace_context_empty():
         application_properties={},
     )
     context = function_app.extract_trace_context(fake_message)
-    assert context["trace_id"] == ""
-    assert context["parent_span_id"] == ""
+    assert context["trace_id"] is None
+    assert context["parent_span_id"] is None
+    assert context["correlation_id"] is None
+    assert context["trace_source"] == "none"
+
+def test_extract_trace_context_amqp_bytes():
+    msg = SimpleNamespace(
+        application_properties={
+            b"traceparent": b"00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+        },
+        correlation_id=None,
+    )
+    result = function_app.extract_trace_context(msg)
+    assert result["trace_id"] == "4bf92f3577b34da6a3ce929d0e0e4736"
+    assert result["parent_span_id"] == "00f067aa0ba902b7"
+    assert result["trace_source"] == "traceparent"
+    assert result["correlation_id"] is None
+
+
+def test_extract_trace_context_rejects_w3c_spec_invalid_values():
+    # version ff is invalid
+    msg_ff = SimpleNamespace(
+        application_properties={"traceparent": "ff-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"},
+        correlation_id=None,
+    )
+    assert function_app.extract_trace_context(msg_ff)["trace_source"] == "none"
+
+    # all-zeros trace_id is invalid
+    msg_zeros = SimpleNamespace(
+        application_properties={"traceparent": f"00-{'0'*32}-00f067aa0ba902b7-01"},
+        correlation_id=None,
+    )
+    assert function_app.extract_trace_context(msg_zeros)["trace_source"] == "none"
+
+    # all-zeros parent_span_id is invalid
+    msg_zero_span = SimpleNamespace(
+        application_properties={"traceparent": f"00-4bf92f3577b34da6a3ce929d0e0e4736-{'0'*16}-01"},
+        correlation_id=None,
+    )
+    assert function_app.extract_trace_context(msg_zero_span)["trace_source"] == "none"
+
+
+def test_extract_trace_context_correlation_id_does_not_poison_trace_id():
+    msg = SimpleNamespace(
+        application_properties={},
+        correlation_id="ORDER-REQ-9921",
+    )
+    result = function_app.extract_trace_context(msg)
+    assert result["trace_id"] is None
+    assert result["parent_span_id"] is None
+    assert result["correlation_id"] == "ORDER-REQ-9921"
+    assert result["trace_source"] == "correlation_id"
