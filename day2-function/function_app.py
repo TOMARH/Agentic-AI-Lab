@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 app = func.FunctionApp()
 
 # In-memory store for idempotency tracking across invocations within the process instance
-PROCESSED_MESSAGE_IDS: Set[str] = set()
+PROCESSED_MESSAGE_IDS: set[str] = set()
 
 
 @app.route(route="BlobIdentityDemo", auth_level=func.AuthLevel.FUNCTION)
