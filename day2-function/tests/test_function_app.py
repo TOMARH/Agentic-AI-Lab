@@ -1,10 +1,10 @@
+import json
 from types import SimpleNamespace
 from unittest.mock import Mock
 
-import function_app
-import json
 import pytest
 
+import function_app
 
 def test_missing_storage_url_returns_configuration_error(monkeypatch):
     monkeypatch.delenv("BLOB_STORAGE_ACCOUNT_URL", raising=False)
