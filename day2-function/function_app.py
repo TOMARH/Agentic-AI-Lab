@@ -6,7 +6,6 @@ import azure.functions as func
 from azure.identity import DefaultAzureCredential
 from azure.storage.blob import BlobServiceClient
 
-
 logger = logging.getLogger(__name__)
 
 app = func.FunctionApp()
