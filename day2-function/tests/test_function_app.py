@@ -1,5 +1,8 @@
+import json
 from types import SimpleNamespace
 from unittest.mock import Mock
+
+import pytest
 
 import function_app
 
@@ -134,3 +137,59 @@ def test_service_bus_consumer_raises_on_invalid_utf8():
         pass
     else:
         raise AssertionError("invalid UTF-8 should fail and be retried")
+
+
+def test_service_bus_consumer_idempotency_skips_duplicate(caplog):
+    # Reset in-memory state for clean test isolation
+    function_app.PROCESSED_MESSAGE_IDS.clear()
+
+    message = Mock()
+    message.message_id = "duplicate-msg-001"
+    message.content_type = "application/json"
+    message.get_body.return_value = b'{"event": "test"}'
+    message.delivery_count = 1
+
+    # First delivery - process normally
+    with caplog.at_level("INFO", logger=function_app.logger.name):
+        function_app.ServiceBusQueueConsumer(message)
+
+    assert "Processed Service Bus message id=duplicate-msg-001" in caplog.text
+    assert "duplicate-msg-001" in function_app.PROCESSED_MESSAGE_IDS
+
+    # Second delivery with duplicate message_id - should skip
+    message.delivery_count = 2
+    with caplog.at_level("WARNING", logger=function_app.logger.name):
+        function_app.ServiceBusQueueConsumer(message)
+
+    assert "Duplicate message detected id=duplicate-msg-001 delivery_count=2. Skipping execution." in caplog.text
+
+
+def test_service_bus_consumer_raises_on_simulated_poison_payload():
+    function_app.PROCESSED_MESSAGE_IDS.clear()
+
+    message = Mock()
+    message.message_id = "poison-msg-999"
+    message.content_type = "application/json"
+    message.get_body.return_value = json.dumps({"simulate_poison": True}).encode("utf-8")
+    message.delivery_count = 1
+
+    with pytest.raises(ValueError, match="Poison message processing failed for id=poison-msg-999"):
+        function_app.ServiceBusQueueConsumer(message)
+
+    # Poison message should NOT be marked as processed
+    assert "poison-msg-999" not in function_app.PROCESSED_MESSAGE_IDS
+
+
+def test_service_bus_consumer_raises_on_malformed_json():
+    function_app.PROCESSED_MESSAGE_IDS.clear()
+
+    message = Mock()
+    message.message_id = "malformed-json-msg"
+    message.content_type = "application/json"
+    message.get_body.return_value = b'{"unclosed_json": '
+    message.delivery_count = 1
+
+    with pytest.raises(json.JSONDecodeError):
+        function_app.ServiceBusQueueConsumer(message)
+
+    assert "malformed-json-msg" not in function_app.PROCESSED_MESSAGE_IDS

@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 
@@ -8,6 +9,9 @@ from azure.storage.blob import BlobServiceClient
 logger = logging.getLogger(__name__)
 
 app = func.FunctionApp()
+
+# In-memory store for idempotency tracking across invocations within the process instance
+PROCESSED_MESSAGE_IDS: set[str] = set()
 
 
 @app.route(route="BlobIdentityDemo", auth_level=func.AuthLevel.FUNCTION)
@@ -47,6 +51,7 @@ def BlobIdentityDemo(req: func.HttpRequest) -> func.HttpResponse:
             status_code=500,
         )
 
+
 @app.function_name(name="ServiceBusQueueConsumer")
 @app.service_bus_queue_trigger(
     arg_name="message",
@@ -54,14 +59,50 @@ def BlobIdentityDemo(req: func.HttpRequest) -> func.HttpResponse:
     connection="ServiceBusConnection",
 )
 def ServiceBusQueueConsumer(message: func.ServiceBusMessage) -> None:
-    """Consume a queue message; leave business payloads out of application logs."""
-    body = message.get_body()
-    # Decode to fail and retry malformed text messages; successful returns are
-    # completed by the Functions Service Bus extension's auto-complete behavior.
-    body.decode("utf-8")
+    """Consume a queue message with idempotency tracking and poison payload detection."""
+    msg_id = message.message_id or "unknown"
+    delivery_count = getattr(message, "delivery_count", 1)
+
+    # 1. Idempotency Check: Short-circuit if already processed
+    if msg_id != "unknown" and msg_id in PROCESSED_MESSAGE_IDS:
+        logger.warning(
+            "Duplicate message detected id=%s delivery_count=%s. Skipping execution.",
+            msg_id,
+            delivery_count,
+        )
+        return
+
+    # 2. Decode and Validate UTF-8
+    body_bytes = message.get_body()
+    try:
+        decoded_text = body_bytes.decode("utf-8")
+    except UnicodeDecodeError:
+        logger.error("Poison payload: Message id=%s is not valid UTF-8.", msg_id)
+        raise
+
+    # 3. Structured Payload Parsing & Controlled Poison Validation
+    if message.content_type == "application/json" or decoded_text.strip().startswith("{"):
+        try:
+            payload = json.loads(decoded_text)
+            if isinstance(payload, dict) and payload.get("simulate_poison") is True:
+                logger.error(
+                    "Simulated poison payload encountered for message id=%s delivery_count=%s.",
+                    msg_id,
+                    delivery_count,
+                )
+                raise ValueError(f"Poison message processing failed for id={msg_id}")
+        except json.JSONDecodeError:
+            logger.error("Poison payload: JSON malformed in message id=%s.", msg_id)
+            raise
+
+    # 4. Mark Processed for Idempotency
+    if msg_id != "unknown":
+        PROCESSED_MESSAGE_IDS.add(msg_id)
+
     logger.info(
-        "Processed Service Bus message id=%s content_type=%s bytes=%d",
-        message.message_id,
+        "Processed Service Bus message id=%s content_type=%s bytes=%d delivery_count=%s",
+        msg_id,
         message.content_type,
-        len(body),
+        len(body_bytes),
+        delivery_count,
     )
