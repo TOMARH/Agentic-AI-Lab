@@ -1,8 +1,8 @@
 import json
 import logging
 import os
-from typing import Set
 
+import azure.functions as func
 from azure.identity import DefaultAzureCredential
 from azure.storage.blob import BlobServiceClient
 
