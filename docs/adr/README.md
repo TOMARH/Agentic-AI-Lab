@@ -4,3 +4,5 @@ Record durable architecture choices here. Suggested naming: NNNN-short-title.md.
 
 - [ADR 0004: Standard Service Bus queue between Logic Apps and Functions](0004-servicebus-standard-queue.md)
 - [ADR 0005: Route BlobCreated events through Event Grid to the existing Service Bus queue](0005-eventgrid-to-existing-servicebus.md)
+
+- [0006. Consumer Idempotency and Dead-Letter Management](0006-consumer-idempotency-and-dead-letter-management.md)
