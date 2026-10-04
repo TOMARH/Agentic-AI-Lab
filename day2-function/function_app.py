@@ -89,7 +89,7 @@ def extract_trace_context(message: object) -> dict[str, str | None]:
 @app.service_bus_queue_trigger(
     arg_name="message",
     queue_name="integration-events",
-    connection="SERVICE_BUS_CONNECTION",
+    connection="ServiceBusConnection",
 )
 def service_bus_queue_consumer(message: func.ServiceBusMessage) -> None:
     message_id = message.message_id
