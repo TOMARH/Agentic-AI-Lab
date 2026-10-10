@@ -1,7 +1,7 @@
 import json
 import os
 import secrets
-import sys
+
 from azure.identity import DefaultAzureCredential
 from azure.servicebus import ServiceBusClient, ServiceBusMessage
 
@@ -24,7 +24,7 @@ def main() -> None:
     print(f"Endpoint:   {NAMESPACE_FQDN}")
     print(f"Queue:      {QUEUE_NAME}")
 
-    traceparent, trace_id, span_id = generate_w3c_traceparent()
+    traceparent, trace_id, _ = generate_w3c_traceparent()
     order_id = f"POISON-{secrets.token_hex(4).upper()}"
 
     payload = {
@@ -38,19 +38,21 @@ def main() -> None:
     body = json.dumps(payload).encode("utf-8")
     credential = DefaultAzureCredential()
 
-    with ServiceBusClient(NAMESPACE_FQDN, credential) as client:
-        with client.get_queue_sender(queue_name=QUEUE_NAME) as sender:
-            msg = ServiceBusMessage(
-                body=body,
-                message_id=f"msg-{order_id}",
-                correlation_id=f"corr-{order_id}",
-                application_properties={
-                    "traceparent": traceparent,
-                    "Diagnostic-Id": traceparent,
-                    "Source": "dlq-seeder"
-                }
-            )
-            sender.send_messages(msg)
+    credential = DefaultAzureCredential()
+
+    with (
+        ServiceBusClient(NAMESPACE_FQDN, credential) as client,
+        client.get_queue_sender(queue_name=QUEUE_NAME) as sender,
+    ):
+        msg = ServiceBusMessage(
+            body=body,
+            message_id=order_id,
+            content_type="application/json",
+            application_properties={
+                "traceparent": traceparent,
+            },
+        )
+        sender.send_messages(msg)
 
     print("\nPoison message sent successfully.")
     print(f"Message ID:  msg-{order_id}")

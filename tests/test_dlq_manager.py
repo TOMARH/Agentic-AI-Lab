@@ -1,5 +1,6 @@
 import json
 from unittest.mock import MagicMock, patch
+
 import pytest
 
 from scripts.day8.dlq_manager import peek_dlq, replay_dlq

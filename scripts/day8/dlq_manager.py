@@ -1,7 +1,7 @@
 import argparse
 import json
 import os
-import sys
+
 from azure.identity import DefaultAzureCredential
 from azure.servicebus import (
     ServiceBusClient,
@@ -23,38 +23,40 @@ def peek_dlq(max_messages: int = 10) -> None:
     print(f"Queue:    {QUEUE_NAME}/$DeadLetterQueue\n")
 
     credential = DefaultAzureCredential()
-    with ServiceBusClient(NAMESPACE_FQDN, credential) as client:
-        with client.get_queue_receiver(
+    with (
+        ServiceBusClient(NAMESPACE_FQDN, credential) as client,
+        client.get_queue_receiver(
             queue_name=QUEUE_NAME,
             sub_queue=ServiceBusSubQueue.DEAD_LETTER,
-        ) as receiver:
-            messages = receiver.peek_messages(max_message_count=max_messages)
-            if not messages:
-                print("DLQ is empty.")
-                return
+        ) as receiver,
+    ):
+        messages = receiver.peek_messages(max_message_count=max_messages)
+        if not messages:
+            print("DLQ is empty.")
+            return
 
-            for idx, msg in enumerate(messages, start=1):
-                props = msg.application_properties or {}
-                # Safely decode byte keys if present
-                clean_props = {
-                    (k.decode() if isinstance(k, bytes) else str(k)): (
-                        v.decode() if isinstance(v, bytes) else str(v)
-                    )
-                    for k, v in props.items()
-                }
+        for idx, msg in enumerate(messages, start=1):
+            props = msg.application_properties or {}
+            # Safely decode byte keys if present
+            clean_props = {
+                (k.decode() if isinstance(k, bytes) else str(k)): (
+                    v.decode() if isinstance(v, bytes) else str(v)
+                )
+                for k, v in props.items()
+            }
 
-                print(f"[{idx}] Message ID:            {msg.message_id}")
-                print(f"    Delivery Count:        {msg.delivery_count}")
-                print(f"    Dead-Letter Reason:    {msg.dead_letter_reason}")
-                print(f"    Error Description:     {msg.dead_letter_error_description}")
-                print(f"    Correlation ID:        {msg.correlation_id}")
-                print(f"    W3C Traceparent:       {clean_props.get('traceparent')}")
-                try:
-                    body = b"".join(msg.body).decode("utf-8")
-                    print(f"    Payload Preview:       {body[:120]}...")
-                except Exception:
-                    print("    Payload:               <non-utf8 bytes>")
-                print("-" * 50)
+            print(f"[{idx}] Message ID:            {msg.message_id}")
+            print(f"    Delivery Count:        {msg.delivery_count}")
+            print(f"    Dead-Letter Reason:    {msg.dead_letter_reason}")
+            print(f"    Error Description:     {msg.dead_letter_error_description}")
+            print(f"    Correlation ID:        {msg.correlation_id}")
+            print(f"    W3C Traceparent:       {clean_props.get('traceparent')}")
+            try:
+                body = b"".join(msg.body).decode("utf-8")
+                print(f"    Payload Preview:       {body[:120]}...")
+            except Exception: # noqa: BLE001
+                print("    Payload:               <non-utf8 bytes>")
+                print("-" * 50)    
 
 
 def replay_dlq(max_messages: int = 5, remediate_poison: bool = False) -> None:
@@ -63,51 +65,57 @@ def replay_dlq(max_messages: int = 5, remediate_poison: bool = False) -> None:
     print(f"Remediate Poison Flag: {remediate_poison}\n")
 
     credential = DefaultAzureCredential()
-    with ServiceBusClient(NAMESPACE_FQDN, credential) as client:
-        with client.get_queue_receiver(
+    with (
+        ServiceBusClient(NAMESPACE_FQDN, credential) as client,
+        client.get_queue_receiver(
             queue_name=QUEUE_NAME,
             sub_queue=ServiceBusSubQueue.DEAD_LETTER,
-        ) as receiver, client.get_queue_sender(queue_name=QUEUE_NAME) as sender:
+        ) as receiver,
+        client.get_queue_sender(queue_name=QUEUE_NAME) as sender,
+    ):
+        messages = receiver.receive_messages(
+            max_message_count=max_messages,
+            max_wait_time=5,
+        )
+        messages = receiver.receive_messages(
+            max_message_count=max_messages, max_wait_time=5
+        )
+        if not messages:
+            print("No messages found in DLQ to replay.")
+            return
 
-            messages = receiver.receive_messages(
-                max_message_count=max_messages, max_wait_time=5
-            )
-            if not messages:
-                print("No messages found in DLQ to replay.")
-                return
-
-            for msg in messages:
-                body_bytes = b"".join(msg.body)
-                props = dict(msg.application_properties or {})
-
-                # If remediating simulated poison payload, patch payload
-                if remediate_poison:
-                    try:
-                        data = json.loads(body_bytes.decode("utf-8"))
-                        if isinstance(data, dict) and data.get("simulate_poison"):
-                            data["simulate_poison"] = False
-                            data["remediated"] = True
-                            body_bytes = json.dumps(data).encode("utf-8")
-                            print(f"Remediated poison flag for {msg.message_id}")
-                    except Exception as err:
-                        print(f"Failed to patch payload: {err}")
-
-                # Set replay tracking metadata while preserving W3C traceparent
-                replay_attempt = int(props.get("x-opt-replay-attempt", 0)) + 1
-                props["x-opt-replay-attempt"] = str(replay_attempt)
-                props["x-original-deadletter-reason"] = str(msg.dead_letter_reason or "MaxDeliveryCountExceeded")
-
-                replayed_msg = ServiceBusMessage(
-                    body=body_bytes,
-                    message_id=msg.message_id,
-                    correlation_id=msg.correlation_id,
-                    application_properties=props,
-                )
-
-                # Send to active queue, then complete on DLQ
-                sender.send_messages(replayed_msg)
-                receiver.complete_message(msg)
-                print(f"Replayed {msg.message_id} -> Active queue (Attempt: {replay_attempt})")
+        for msg in messages:
+                        body_bytes = b"".join(msg.body)
+                        props = dict(msg.application_properties or {})
+        
+                        # If remediating simulated poison payload, patch payload
+                        if remediate_poison:
+                            try:
+                                data = json.loads(body_bytes.decode("utf-8"))
+                                if isinstance(data, dict) and data.get("simulate_poison"):
+                                    data["simulate_poison"] = False
+                                    data["remediated"] = True
+                                    body_bytes = json.dumps(data).encode("utf-8")
+                                    print(f"Remediated poison flag for {msg.message_id}")
+                            except Exception as err: # noqa: BLE001
+                                print(f"Failed to patch payload: {err}")
+        
+                        # Set replay tracking metadata while preserving W3C traceparent
+                        replay_attempt = int(props.get("x-opt-replay-attempt", 0)) + 1
+                        props["x-opt-replay-attempt"] = str(replay_attempt)
+                        props["x-original-deadletter-reason"] = str(msg.dead_letter_reason or "MaxDeliveryCountExceeded")
+        
+                        replayed_msg = ServiceBusMessage(
+                            body=body_bytes,
+                            message_id=msg.message_id,
+                            correlation_id=msg.correlation_id,
+                            application_properties=props,
+                        )
+        
+                        # Send to active queue, then complete on DLQ
+                        sender.send_messages(replayed_msg)
+                        receiver.complete_message(msg)
+                        print(f"Replayed {msg.message_id} -> Active queue (Attempt: {replay_attempt})")
 
 
 if __name__ == "__main__":
