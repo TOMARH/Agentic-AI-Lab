@@ -1,2 +1,4 @@
 google-genai==2.23.0
 python-dotenv==1.2.3
+azure-identity==1.26.0
+azure-servicebus==7.15.0
