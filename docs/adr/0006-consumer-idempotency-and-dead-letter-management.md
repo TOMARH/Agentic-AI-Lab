@@ -24,3 +24,15 @@ In distributed systems, Service Bus guarantees at-least-once delivery. Consequen
 
 - **Positive:** Duplicate message processing is avoided; poison messages cannot block active queue throughput.
 - **Negative / Trade-off:** In-memory deduplication is scoped per worker instance. For high-scale multi-instance production deployments, deduplication state should be backed by an external cache (e.g., Azure Cache for Redis or Azure Cosmos DB) or Service Bus native duplicate detection within the detection window.
+
+---
+
+## Addendum (Day 8): Controlled DLQ Replay Contract
+
+### Decision
+1. **Replay Envelope Preservation:** Attended operator replay tooling (`scripts/day8/dlq_manager.py`) constructs a new `ServiceBusMessage` preserving `message_id`, `correlation_id`, `content_type`, and `application_properties`, preserving typed values and decoding known text headers such as W3C `traceparent`, while stamping `x-opt-replay-attempt` (incremented per replay) and `x-original-deadletter-reason`.
+2. **Send-Then-Complete Ordering:** During replay, `sender.send_messages()` executes before `receiver.complete_message()` on `$DeadLetterQueue` to favor possible duplicate delivery over message loss; duplicates remain possible if completion fails.
+
+### Operational Trade-offs & Idempotency Scope
+- **Duplicate-Delivery Window:** If `send_messages()` succeeds but `complete_message()` fails, the message is enqueued to `integration-events` while remaining in `$DeadLetterQueue`, creating a duplicate delivery when re-processed.
+- **In-Memory Idempotency Limitation:** `ServiceBusQueueConsumer` (`day2-function/function_app.py`) records `message_id` in `PROCESSED_MESSAGE_IDS` only after successful execution, and that set resides in worker memory. Therefore, a poison message that failed all 5 prior attempts will execute normally on its first remediated replay, but any duplicate delivery resulting from an interrupted `complete_message()` call is only deduplicated if routed to the same warm worker instance.

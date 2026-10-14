@@ -7,7 +7,7 @@ from azure.servicebus import ServiceBusClient, ServiceBusMessage
 
 NAMESPACE_FQDN = os.environ.get(
     "SERVICE_BUS_FQDN",
-    "sb-ai-int-likwmn7js4ffw.servicebus.windows.net"
+    "sb-ai-int-likwmn7js4ffw.servicebus.windows.net",
 )
 QUEUE_NAME = os.environ.get("SERVICE_BUS_QUEUE_NAME", "integration-events")
 
@@ -32,12 +32,10 @@ def main() -> None:
         "order_id": order_id,
         "simulate_poison": True,
         "amount": 999.99,
-        "currency": "USD"
+        "currency": "USD",
     }
 
     body = json.dumps(payload).encode("utf-8")
-    credential = DefaultAzureCredential()
-
     credential = DefaultAzureCredential()
 
     with (
@@ -55,9 +53,11 @@ def main() -> None:
         sender.send_messages(msg)
 
     print("\nPoison message sent successfully.")
-    print(f"Message ID:  msg-{order_id}")
+    print(f"Message ID:  {order_id}")
     print(f"Trace ID:    {trace_id}")
-    print("With MaxDeliveryCount=5, the consumer will fail 5 times and Azure will dead-letter this message.")
+    print(
+        "With MaxDeliveryCount=5, the consumer will fail 5 times and Azure will dead-letter this message."
+    )
 
 
 if __name__ == "__main__":

@@ -19,6 +19,9 @@ def mock_servicebus():
         sender_instance = MagicMock()
         client_instance.get_queue_sender.return_value.__enter__.return_value = sender_instance
 
+        client_instance.attach_mock(receiver_instance, "receiver")
+        client_instance.attach_mock(sender_instance, "sender")
+
         yield {
             "client": client_instance,
             "receiver": receiver_instance,
@@ -61,14 +64,18 @@ def test_peek_dlq_with_messages(mock_servicebus, capsys):
 
 
 def test_replay_dlq_remediate_flag(mock_servicebus):
-    """Replay with remediation should mutate payload, increment replay metadata, and complete message."""
+    """Replay with remediation should mutate payload, preserve property types and binary bytes, send before complete, and increment metadata."""
     msg = MagicMock()
     msg.message_id = "msg-POISON-123"
     msg.correlation_id = "corr-123"
+    msg.content_type = "application/json"
     msg.dead_letter_reason = "MaxDeliveryCountExceeded"
     msg.application_properties = {
-        "traceparent": "00-11111111111111111111111111111111-2222222222222222-01",
-        "x-opt-replay-attempt": "1",
+        b"traceparent": b"00-11111111111111111111111111111111-2222222222222222-01",
+        b"x-opt-replay-attempt": b"1",
+        "priority": 7,
+        b"is_batch": False,
+        b"raw_binary_token": b"\xff\xd8\xff\xe0",
     }
     original_payload = {"order_id": "123", "simulate_poison": True}
     msg.body = [json.dumps(original_payload).encode("utf-8")]
@@ -77,8 +84,16 @@ def test_replay_dlq_remediate_flag(mock_servicebus):
 
     replay_dlq(max_messages=1, remediate_poison=True)
 
+    mock_servicebus["receiver"].receive_messages.assert_called_once_with(
+        max_message_count=1,
+        max_wait_time=5,
+    )
     assert mock_servicebus["sender"].send_messages.call_count == 1
     sent_msg = mock_servicebus["sender"].send_messages.call_args[0][0]
+
+    assert sent_msg.message_id == "msg-POISON-123"
+    assert sent_msg.correlation_id == "corr-123"
+    assert sent_msg.content_type == "application/json"
 
     sent_payload = json.loads(b"".join(sent_msg.body).decode("utf-8"))
     assert sent_payload["simulate_poison"] is False
@@ -88,5 +103,67 @@ def test_replay_dlq_remediate_flag(mock_servicebus):
     assert props["x-opt-replay-attempt"] == "2"
     assert props["x-original-deadletter-reason"] == "MaxDeliveryCountExceeded"
     assert props["traceparent"] == "00-11111111111111111111111111111111-2222222222222222-01"
+    assert props["priority"] == 7
+    assert type(props["priority"]) is int
+    assert props["is_batch"] is False
+    assert props["raw_binary_token"] == b"\xff\xd8\xff\xe0"
+    assert type(props["raw_binary_token"]) is bytes
 
     mock_servicebus["receiver"].complete_message.assert_called_once_with(msg)
+
+    call_names = [c[0] for c in mock_servicebus["client"].mock_calls]
+    assert call_names.index("sender.send_messages") < call_names.index(
+        "receiver.complete_message"
+    )
+
+
+def test_replay_dlq_remediate_invalid_json_fails_closed(mock_servicebus, capsys):
+    """Replay with --remediate should fail closed, abandon message, and not send/complete if JSON parsing fails."""
+    msg = MagicMock()
+    msg.message_id = "msg-CORRUPT-404"
+    msg.correlation_id = "corr-404"
+    msg.content_type = "application/json"
+    msg.dead_letter_reason = "MaxDeliveryCountExceeded"
+    msg.application_properties = {}
+    msg.body = [b"{not-valid-json"]
+
+    mock_servicebus["receiver"].receive_messages.return_value = [msg]
+
+    replay_dlq(max_messages=1, remediate_poison=True)
+
+    mock_servicebus["receiver"].receive_messages.assert_called_once_with(
+        max_message_count=1,
+        max_wait_time=5,
+    )
+    mock_servicebus["sender"].send_messages.assert_not_called()
+    mock_servicebus["receiver"].complete_message.assert_not_called()
+    mock_servicebus["receiver"].abandon_message.assert_called_once_with(msg)
+
+    captured = capsys.readouterr()
+    assert "Failed to parse payload for msg-CORRUPT-404" in captured.out
+
+
+def test_replay_dlq_remediate_missing_poison_flag_fails_closed(mock_servicebus, capsys):
+    """Replay with --remediate should fail closed, abandon message, and not send/complete if payload lacks simulate_poison."""
+    msg = MagicMock()
+    msg.message_id = "msg-OTHER-500"
+    msg.correlation_id = "corr-500"
+    msg.content_type = "application/json"
+    msg.dead_letter_reason = "MaxDeliveryCountExceeded"
+    msg.application_properties = {}
+    msg.body = [json.dumps({"order_id": "500", "simulate_poison": False}).encode("utf-8")]
+
+    mock_servicebus["receiver"].receive_messages.return_value = [msg]
+
+    replay_dlq(max_messages=1, remediate_poison=True)
+
+    mock_servicebus["receiver"].receive_messages.assert_called_once_with(
+        max_message_count=1,
+        max_wait_time=5,
+    )
+    mock_servicebus["sender"].send_messages.assert_not_called()
+    mock_servicebus["receiver"].complete_message.assert_not_called()
+    mock_servicebus["receiver"].abandon_message.assert_called_once_with(msg)
+
+    captured = capsys.readouterr()
+    assert "Failed to patch payload for msg-OTHER-500" in captured.out
