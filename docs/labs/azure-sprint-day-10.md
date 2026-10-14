@@ -5,7 +5,7 @@
 
 ## 1. Objective and concepts
 
-Carry the Day 9 local `Decision` value across an asynchronous boundary by publishing it to the existing Azure Service Bus queue. The lab demonstrates a versioned integration event, preservation of provenance, Entra ID authentication, W3C trace context, and compatibility with an existing generic JSON consumer.
+Carry the Day 9 local `Decision` value across an asynchronous boundary by publishing it to the existing Azure Service Bus queue. The lab demonstrates a versioned integration event, preservation of provenance, Entra ID authentication, W3C-formatted correlation headers (`traceparent` and `Diagnostic-Id`), and compatibility with an existing generic JSON consumer.
 
 No new namespace, queue, Function, identity, role assignment, or other Azure resource is required. No Function source change is part of this lab.
 
@@ -41,7 +41,7 @@ existing Day 4 Function consumer
   parse valid JSON; log message metadata only; complete on success
 ```
 
-The event body is JSON with `eventType`, `schemaVersion`, `advisory`, `eventId`, `occurredAt`, and a nested `decision` object containing all four Day 9 fields. `advisory` is always `true`, regardless of source; downstream consumers must not execute or authorize work from this event. `decision.source` separately identifies rule, LLM, or unmatched provenance. The Service Bus `message_id` equals `eventId`. W3C `traceparent` and `Diagnostic-Id` are transport properties; business decision fields are not duplicated into properties.
+The event body is JSON with `eventType`, `schemaVersion`, `advisory`, `eventId`, `occurredAt`, and a nested `decision` object containing all four Day 9 fields. `advisory` is always `true`, regardless of source; downstream consumers must not execute or authorize work from this event. `decision.source` separately identifies rule, LLM, or unmatched provenance. The Service Bus `message_id` equals `eventId`. W3C-formatted `traceparent` and `Diagnostic-Id` headers carry correlation-only context (the CLI does not initialize an OpenTelemetry tracer or export a producer span); business decision fields are not duplicated into properties.
 
 An `unmatched` result is an explicit event outcome, not a request to execute a recommendation. A source of `llm` remains advisory and untrusted. Only the explicit `--llm` option can call Gemini, and that call is separate from the Service Bus operation.
 
@@ -51,7 +51,7 @@ See [ADR 0007](../adr/0007-decision-events-to-existing-servicebus.md) for altern
 
 1. Reuse the existing queue and generic JSON consumer contract instead of adding a new namespace or queue.
 2. Keep the Function consumer unchanged; this lab carries the decision but does not make it a policy or authorization input.
-3. Put business data in a versioned event body and reserve application properties for trace context.
+3. Put business data in a versioned event body and reserve application properties for W3C-formatted correlation headers (rejecting malformed or all-zero IDs).
 4. Use existing Entra ID and queue-level Data Sender access; do not create a SAS key, connection string, or new role assignment.
 
 ## 5. Tools and configuration
@@ -81,18 +81,18 @@ $env:SERVICE_BUS_FQDN = "<your namespace>.servicebus.windows.net"
 python -m scripts.day10.publish_decision messaging
 ```
 
-The first three commands are local validation. Unit tests use fake credentials, sender/client objects, and deterministic timestamps/trace IDs. They do not call Azure or Gemini. The final command sends one rule-backed event to the live queue; Standard includes the first 13 million messaging operations each month, and operations beyond the allowance are billed. Do not add `--llm` to a live command unless a Gemini request is intended and approved by account/data policy.
+The first three commands are local validation. Unit tests use fake credentials, sender/client objects, and deterministic timestamps/correlation IDs. They do not call Azure or Gemini. The final command sends one rule-backed event to the live queue; Standard includes the first 13 million messaging operations each month, and operations beyond the allowance are billed. Do not add `--llm` to a live command unless a Gemini request is intended and approved by account/data policy.
 
 Validation evidence from 14 October 2026:
 
 - Ruff: `All checks passed!` for `scripts/day10` and `tests/test_decision_publisher.py`.
-- Pytest: 13 passed across the Day 9 decision model and Day 10 publisher tests after adding the advisory marker, namespace requirement, and event-size guard.
+- Pytest: 21 passed across the Day 9 decision model (5 tests) and Day 10 publisher tests (16 tests), covering the advisory marker, namespace requirement, event-size guard, W3C correlation header validation (including non-zero trace/span ID enforcement), client/sender/credential cleanup on failure paths, and CLI failure behavior.
 - The tests were run after installing the exact pins: `azure-identity` 1.26.0, `azure-servicebus` 7.15.0, `pytest` 9.1.1, `ruff` 0.16.10, and `google-genai` 2.23.0.
 - CI's Ruff scope is the new Day 10 publisher and its tests; the Day 9 model and tests are exercised by pytest but are not re-linted in this PR.
-- Compile check: `python -m compileall -q scripts/day10 tests/test_decision_publisher.py` completed successfully. The local Python launcher emitted a warning that it could not locate its registered Python executable, but the selected interpreter ran the command successfully.
+- Compile check: `python -m compileall -q scripts/day10 tests/test_decision_publisher.py` completed successfully.
 - `git diff --check`: passed.
 - Live rule-only send: event `18caa9295cf34ad99b7830039c5eb4d0` was published to `integration-events` using source `rule`; no Gemini call was made. This historical smoke send used the then-installed `azure-identity` 1.25.3 and `azure-servicebus` 7.14.3.
-- At 2026-10-14 13:56:27.624786 UTC, Application Insights returned `Consuming message: ID=18caa9295cf34ad99b7830039c5eb4d0` with `TraceSource=traceparent` and component `operation_Id` `461227dd2e394b9ab64c04525148c7d2`. This directly correlates the consumer trace by message ID. The Function log's structured `TraceId` dimension was empty, so the publisher trace ID was not independently verified in telemetry. This historical event predates the explicit `advisory` property added to the PR after review.
+- At 2026-10-14 13:56:27.624786 UTC, Application Insights returned `Consuming message: ID=18caa9295cf34ad99b7830039c5eb4d0` with `TraceSource=traceparent` and component `operation_Id` `461227dd2e394b9ab64c04525148c7d2`. This correlates the consumer log by message ID and confirms the consumer parsed the W3C-formatted `traceparent` property (`TraceSource=traceparent`). Because the CLI generates synthetic W3C correlation IDs without exporting a producer telemetry span and the Function log's structured `TraceId` dimension was empty, end-to-end distributed trace export from producer to Application Insights is not claimed. This historical event predates the explicit `advisory` property added to the PR after review.
 - To query this evidence through the Application Insights component API, select the intended subscription and run the following KQL against its `traces` table (the component API schema differs from Log Analytics' `AppTraces`):
 
   ```powershell

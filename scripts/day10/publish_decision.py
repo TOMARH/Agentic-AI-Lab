@@ -22,6 +22,30 @@ gemini_recommendation = decision_model.gemini_recommendation
 DEFAULT_QUEUE = "integration-events"
 EVENT_TYPE = "ArchitectureDecision.Created"
 MAX_EVENT_BODY_BYTES = 240 * 1024
+_ALL_ZEROS_TRACE_ID = "0" * 32
+_ALL_ZEROS_SPAN_ID = "0" * 16
+
+
+def _build_w3c_correlation_headers(
+    trace_id: str | None = None,
+    span_id: str | None = None,
+) -> tuple[str, str]:
+    """Validate or generate W3C-formatted correlation identifiers (no active OTel span)."""
+    resolved_trace_id = (trace_id if trace_id is not None else uuid.uuid4().hex).lower()
+    resolved_span_id = (span_id if span_id is not None else uuid.uuid4().hex[:16]).lower()
+
+    if len(resolved_trace_id) != 32 or len(resolved_span_id) != 16:
+        raise ValueError("trace_id must be 32 hex chars and span_id must be 16 hex chars")
+    try:
+        int(resolved_trace_id, 16)
+        int(resolved_span_id, 16)
+    except ValueError as error:
+        raise ValueError("trace IDs must contain only hexadecimal characters") from error
+
+    if resolved_trace_id == _ALL_ZEROS_TRACE_ID or resolved_span_id == _ALL_ZEROS_SPAN_ID:
+        raise ValueError("trace_id and span_id must not be all zeros")
+
+    return resolved_trace_id, f"00-{resolved_trace_id}-{resolved_span_id}-01"
 
 
 def build_decision_event(
@@ -60,18 +84,9 @@ def publish_decision(
     trace_id: str | None = None,
     span_id: str | None = None,
 ) -> dict[str, Any]:
-    """Send one decision event using Entra credentials and return its event envelope."""
+    """Send one decision event with Entra credentials and W3C-formatted correlation headers."""
     event = build_decision_event(decision, occurred_at=now)
-    trace_id = trace_id or uuid.uuid4().hex
-    span_id = span_id or uuid.uuid4().hex[:16]
-    if len(trace_id) != 32 or len(span_id) != 16:
-        raise ValueError("trace_id must be 32 hex chars and span_id must be 16 hex chars")
-    try:
-        int(trace_id, 16)
-        int(span_id, 16)
-    except ValueError as error:
-        raise ValueError("trace IDs must contain only hexadecimal characters") from error
-    traceparent = f"00-{trace_id}-{span_id}-01"
+    correlation_trace_id, traceparent = _build_w3c_correlation_headers(trace_id, span_id)
     body = _serialize_event(event)
 
     credential_factory = credential_factory or DefaultAzureCredential
@@ -82,7 +97,7 @@ def publish_decision(
         message = message_factory(
             body=body,
             message_id=event["eventId"],
-            correlation_id=trace_id,
+            correlation_id=correlation_trace_id,
             content_type="application/json",
             application_properties={
                 "traceparent": traceparent,
@@ -119,14 +134,15 @@ def main() -> None:
     if not namespace:
         parser.error("Set SERVICE_BUS_FQDN to the intended namespace hostname before publishing.")
 
+    queue_name = os.getenv("SERVICE_BUS_QUEUE_NAME", DEFAULT_QUEUE)
     decision = decide(args.topic, llm=gemini_recommendation if args.llm else None)
     event = publish_decision(
         decision,
         namespace=namespace,
-        queue_name=os.getenv("SERVICE_BUS_QUEUE_NAME", DEFAULT_QUEUE),
+        queue_name=queue_name,
     )
     print(
-        f"Published event {event['eventId']} to {os.getenv('SERVICE_BUS_QUEUE_NAME', DEFAULT_QUEUE)} "
+        f"Published event {event['eventId']} to {queue_name} "
         f"(decision source: {decision.source})."
     )
 

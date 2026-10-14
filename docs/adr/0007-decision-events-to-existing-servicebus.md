@@ -12,7 +12,7 @@ The existing `integration-events` queue accepts JSON messages. Its Function cons
 
 ## Decision
 
-Add an operator-invoked local producer that serializes a decision into a versioned `ArchitectureDecision.Created` JSON envelope and sends it to the existing `integration-events` queue. Authenticate with `DefaultAzureCredential` and the existing queue-scoped Azure Service Bus Data Sender assignment. Preserve the Day 9 decision source and rationale in the event body, and include machine-readable `advisory: true` in the envelope for every source. Use the Service Bus message ID for the event ID, a W3C `traceparent` in application properties, and JSON content type.
+Add an operator-invoked local producer that serializes a decision into a versioned `ArchitectureDecision.Created` JSON envelope and sends it to the existing `integration-events` queue. Authenticate with `DefaultAzureCredential` and the existing queue-scoped Azure Service Bus Data Sender assignment. Preserve the Day 9 decision source and rationale in the event body, and include machine-readable `advisory: true` in the envelope for every source. Use the Service Bus message ID for the event ID, W3C-formatted correlation headers (`traceparent` and `Diagnostic-Id`, validated to reject malformed or all-zero IDs) in application properties, and JSON content type. Because the CLI does not initialize an OpenTelemetry tracer or export producer spans, these headers provide message-level correlation context rather than exported end-to-end distributed traces.
 
 Do not change the consumer, queue, namespace, identities, role assignments, or infrastructure. Every event is explicitly advisory; this producer does not execute a recommendation or convert it into authorization or policy.
 
@@ -20,7 +20,7 @@ Do not change the consumer, queue, namespace, identities, role assignments, or i
 
 1. **Create a new namespace/queue:** rejected because the existing queue has the required generic JSON contract and sender access; another namespace would add avoidable recurring cost and operational surface.
 2. **Change the Function consumer to execute decisions:** rejected because this lab is about message integration and provenance, not introducing model output into production policy or adding a new consumer behavior.
-3. **Put the decision fields only in AMQP application properties:** rejected because the complete decision is a business event payload; properties are reserved for transport metadata and trace context.
+3. **Put the decision fields only in AMQP application properties:** rejected because the complete decision is a business event payload; properties are reserved for transport metadata and correlation context.
 
 ## Consequences
 
