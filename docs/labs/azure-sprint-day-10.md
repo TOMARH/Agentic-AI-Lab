@@ -88,6 +88,7 @@ Validation evidence from 14 October 2026:
 - Ruff: `All checks passed!` for `scripts/day10` and `tests/test_decision_publisher.py`.
 - Pytest: 13 passed across the Day 9 decision model and Day 10 publisher tests after adding the advisory marker, namespace requirement, and event-size guard.
 - The tests were run after installing the exact pins: `azure-identity` 1.26.0, `azure-servicebus` 7.15.0, `pytest` 9.1.1, `ruff` 0.16.10, and `google-genai` 2.23.0.
+- CI's Ruff scope is the new Day 10 publisher and its tests; the Day 9 model and tests are exercised by pytest but are not re-linted in this PR.
 - Compile check: `python -m compileall -q scripts/day10 tests/test_decision_publisher.py` completed successfully. The local Python launcher emitted a warning that it could not locate its registered Python executable, but the selected interpreter ran the command successfully.
 - `git diff --check`: passed.
 - Live rule-only send: event `18caa9295cf34ad99b7830039c5eb4d0` was published to `integration-events` using source `rule`; no Gemini call was made. This historical smoke send used the then-installed `azure-identity` 1.25.3 and `azure-servicebus` 7.14.3.
