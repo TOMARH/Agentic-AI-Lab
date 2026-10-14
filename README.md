@@ -4,7 +4,7 @@ A hands-on learning repository evolving from a small Python/Gemini example towar
 
 ## Current project
 
-- `01_tool_calling/`: introductory Python examples. `first_agent.py` currently demonstrates a local architecture-principle lookup; `hello_gemini.py` calls the Gemini Interactions API.
+- `01_tool_calling/`: introductory Python examples. `first_agent.py` demonstrates a rules-first decision model with typed results and an optional Gemini fallback; `hello_gemini.py` calls the Gemini Interactions API.
 - `day2-function/`: Python v2 Azure Function demonstrating managed-identity access to Blob Storage and consuming the Day 4 Service Bus queue.
 - `infra/`: Bicep and parameters describing the Azure Function, Service Bus, and Event Grid lab infrastructure; see its README before deployment.
 - `requirements.txt`: pinned Python dependencies for the current examples.
