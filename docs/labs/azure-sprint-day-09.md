@@ -1,8 +1,17 @@
 # Azure sprint — Day 9: Local decision model and typed decisions
 
-## 1. Objective
+**Status:** Implemented as a local-only Python exercise. No Azure deployment or live Gemini request is claimed.
 
-Explore a small decision model locally: deterministic rules for known topics, a typed result that carries recommendation provenance, and an optional Gemini fallback for unknown topics. The exercise uses no Azure resources and makes no Azure runtime claims.
+## 1. Objective and concepts
+
+Build a small architecture decision component that makes deterministic recommendations for known topics, returns a typed result with provenance, and optionally asks Gemini for a suggestion on an unknown topic. This lab introduces:
+
+- **Rules-first routing:** use predictable local policy for known inputs before considering a probabilistic model.
+- **Typed result / provenance:** make the decision source (`rule`, `llm`, or `unmatched`) visible to callers instead of returning an ambiguous string.
+- **Dependency injection:** pass the optional model function into `decide()` so its behavior can be tested with a fake, offline implementation.
+- **Trust boundary:** model text is untrusted advice. A type annotation records the source; it does not validate correctness or confer authority.
+
+The exercise is deliberately local and does not alter the Azure integration architecture. It can later be used as a decision component behind a governed integration boundary, with policy and operational controls added separately.
 
 ## 2. Architecture
 
@@ -11,6 +20,7 @@ CLI topic
    |
    v
 decide(topic)
+   | normalize with strip + casefold
    | exact local rule? -- yes --> Decision(source="rule")
    |
    no
@@ -19,58 +29,88 @@ decide(topic)
    +---------------------------------------> Decision(source="unmatched")
 ```
 
-`Decision` is an immutable dataclass with `topic`, `recommendation`, `source`, and `rationale`. The model checks local rules first. The Gemini callable is injected, invoked only for an unmatched topic, and imported lazily; normal imports and rule-only runs need neither a key nor network access.
+`Decision` is a frozen dataclass containing `topic`, `recommendation`, `source`, and `rationale`. Rules are checked before the injected fallback. The provider SDK import happens only inside `gemini_recommendation()`, so importing the module, running a known rule, and testing the local decision function do not require a key or network access.
 
-## 3. Core design decisions and alternatives
+## 3. Reasoning prompts and checkpoints
 
-1. **Rules first:** exact normalized topic matches are deterministic and do not call the model, even if the optional fallback is enabled. Alternatives include always calling an LLM, which adds latency, cost, and variability to known decisions.
-2. **Typed decisions:** the dataclass exposes provenance (`rule`, `llm`, or `unmatched`) alongside the recommendation and rationale. Returning plain strings would hide the decision path from callers and reviewers.
-3. **Explicit optional LLM:** Gemini is only enabled with `--llm` and only used for an unknown topic. Without that flag the result is explicitly `unmatched`. This preserves offline behavior and makes the external model boundary visible.
-4. **Suggestions, not authority:** LLM output is not validated against policy and is not suitable as an authorization, safety, or production control decision. A future policy-sensitive use would need constrained outputs, validation, human review, and audit controls.
+The implementation checkpoint asked: should the model be the default decision-maker, or only a visible opt-in fallback after deterministic rules? The chosen design preserves a deterministic path and makes provider use explicit with `--llm`. Known topics must not call the fallback, even when it is injected; tests enforce that invariant.
 
-## 4. Configuration and trust boundary
+The provider instruction sent by the code is:
+
+> Give one concise software architecture principle for this topic. Return a recommendation, not code. Topic: {topic}
+
+The user-facing reasoning checkpoint selected rules-first behavior with typed source information. This keeps the example useful for learning while constraining external calls. The recommendation remains a suggestion; no hidden policy or authorization decision is delegated to Gemini.
+
+## 4. Design decisions and alternatives
+
+1. **Rules first.** Exact normalized topic keys are deterministic and do not invoke Gemini. Always asking an LLM would add latency, provider dependency, cost, and variation even for known topics.
+2. **Typed decisions.** The dataclass exposes provenance (`rule`, `llm`, or `unmatched`) and rationale alongside the recommendation. Plain strings conceal how the result was produced.
+3. **Explicit optional provider.** Gemini is used only when the caller supplies the fallback, which the CLI does only with `--llm`, and only after a rule miss. Otherwise the result is an explicit `unmatched` value.
+4. **Advice, not authority.** LLM output is not schema-checked, policy-validated, filtered, or reviewed. It must not control authorization, safety, routing, or production policy without a separately designed validation and governance layer.
+5. **Injected dependency.** Tests pass a fake callable instead of making live requests. This makes the decision contract fast, repeatable, and credential-free to verify.
+
+## 5. Configuration, reproduction, and trust boundary
+
+Run commands from the repository root in the project virtual environment. The rule-only path needs no external credentials.
 
 | Setting | Required | Purpose |
 |---|---:|---|
-| `GEMINI_API_KEY` | Only for `--llm` on an unknown topic | Authenticates the optional Gemini request; never store the value in source or lab notes. |
-| `GEMINI_MODEL` | No | Optional model override; defaults to `gemini-3.6-flash`, matching the existing Gemini example. |
+| `GEMINI_API_KEY` | Only for an unmatched topic with `--llm` | Authenticates the optional Gemini API request. Never place its value in source, shell history, logs, or lab notes. |
+| `GEMINI_MODEL` | No | Optional model override; code default is `gemini-3.6-flash`. |
 
-The local rules run without credentials. The optional Gemini request sends the topic and a short instruction to the configured model provider. The recommendation is model-generated text and must be treated as untrusted input.
+To exercise the optional provider path in PowerShell, set the key in the current process environment without echoing or committing it, then run:
 
-## 5. Local validation
+```powershell
+$env:GEMINI_API_KEY = [System.Net.NetworkCredential]::new("", (Read-Host -AsSecureString "Gemini API key")).Password
+python 01_tool_calling/first_agent.py "event sourcing" --llm
+Remove-Item Env:GEMINI_API_KEY
+```
 
-These checks exercise rule selection, typed provenance, optional fallback injection, and invalid inputs without making a network request:
+The prompt sends the normalized topic and fixed instruction to the configured model provider. Treat the returned text as untrusted external content. Only opt in when the provider account, data handling, and usage costs are acceptable. The key is not loaded from `.env` in this module; environment configuration as shown above is required for this CLI path.
+
+## 6. Validation evidence
+
+The PR implementation record reports five local tests passing, successful rule and unmatched CLI examples, successful `compileall`, and a clean `git diff --check`. These checks are local; they do not establish live Gemini or Azure behavior. The focused commands are:
 
 ```powershell
 python -m pytest tests/test_decision_model.py -v
 python 01_tool_calling/first_agent.py messaging
 python 01_tool_calling/first_agent.py "event sourcing"
+python -m compileall 01_tool_calling/first_agent.py tests/test_decision_model.py
+git diff --check
 ```
 
-Expected outcomes: `messaging` returns source `rule`; `event sourcing` without `--llm` returns source `unmatched`. The test suite injects a fake fallback to prove unknown topics can return source `llm` without calling Gemini.
+Expected behavior: `messaging` reports source `rule`; `event sourcing` without `--llm` reports source `unmatched`. Tests cover known-rule precedence, unmatched provenance, fake-fallback provenance and invocation, empty-topic rejection, and empty model-answer rejection. The fake fallback proves the integration contract without a live provider request.
 
-To opt in to the external API manually, configure `GEMINI_API_KEY` in the local environment and run:
+The PR's GitHub quality check also passed. No live Gemini call and no Azure command/resource operation was part of the reported validation. When reproducing, retain the actual command output and test summary in the PR or session record rather than inferring output from these expected behaviors.
 
-```powershell
-python 01_tool_calling/first_agent.py "event sourcing" --llm
-```
+## 7. Tools and technologies used
 
-No live Gemini call is required for local validation, and none is represented as executed by this lab record.
+- Python and the standard library (`dataclasses`, `typing`, `argparse`, `os`) implement the local model and CLI.
+- `pytest` exercises the decision contract with an injected fake callable.
+- Google Gen AI Python SDK (`google-genai`) is imported lazily for the optional Gemini Interactions API path. The model default is in code; no live call was needed for local checks. See the project [Tools & Technology inventory](../tools/README.md) for setup and trust-boundary notes.
+- Git and GitHub Actions provide branch review and the repository quality check; the PR summary reports its required check passed.
+- Azure CLI and Azure resources are not used by this lab.
 
-## 6. Operational risks and limitations
+## 8. Security, cost, and operations
 
-- The rules use exact topic keys after trimming and case-folding; synonyms and fuzzy matching are not implemented.
-- The optional provider call has external availability, latency, and cost considerations. There is no retry, timeout policy, response schema, or content filtering in this introductory example.
-- A dataclass makes the result shape explicit but does not make the recommendation correct. Callers must not treat a model suggestion as an approved policy decision.
-- The configured default model identifier is inherited from the existing example and may need updating if the provider retires or changes model availability.
+- **Secrets:** do not commit `.env`, API keys, or provider responses containing sensitive information. Use a process-scoped environment variable for the manual opt-in example and clear it after use.
+- **Data boundary:** the topic leaves the local process only when `--llm` is enabled for an unmatched topic. Do not send confidential or regulated topic text unless permitted by the provider's current terms and organizational policy.
+- **Model risk:** the sample has no retry/timeout strategy, structured output contract, content filtering, or recommendation validation. Provider errors may stop the CLI.
+- **Azure cost:** no Azure resource was created or changed, so this lab adds no Azure resource cost and requires no Azure cleanup.
+- **Provider cost:** rule-only runs and tests use no Gemini API. A manually enabled live request may incur provider charges according to the account's current pricing and usage; this lab does not estimate or verify that spend.
 
-## 7. Cleanup and Azure resource state
+## 9. Cleanup and Azure resource state
 
-No Azure resource was created, modified, or queried for this local lab. No cloud cleanup is required. The optional Gemini API is independently opt-in and was not called as part of the local tests.
+No Azure resource was created, modified, or queried for this lab; no cloud cleanup is required. Local cleanup is to clear the process environment variable after a manual provider run and remove any locally retained sensitive output according to the user's normal handling rules. No live Gemini request is represented as executed by the PR validation record.
 
-## 8. Interview takeaways
+## 10. Next-lab dependency
 
-- A deterministic rule path is easy to test and explain; a model fallback adds flexibility with variability and an external trust boundary.
-- Typed results preserve provenance so a caller can distinguish a rule-backed answer, an LLM suggestion, and no match.
-- Dependency injection lets the fallback behavior be validated offline and without exposing credentials.
-- Keep generative recommendations out of authorization paths unless they are validated and governed by an appropriate control system.
+Day 9 supplies a local decision contract and provenance field that a later integration lab can carry as message metadata or an explicit application result. The next lab should preserve the distinction between rule-backed, model-suggested, and unmatched decisions, and must add its own authorization, validation, observability, and cost controls before any model suggestion affects an Azure workflow. No Azure provisioning is a prerequisite for reproducing this lab.
+
+## 11. Interview takeaways
+
+- A deterministic rule path is straightforward to test and explain; a model fallback adds flexibility with variability and a provider trust boundary.
+- Typed results preserve provenance, helping downstream systems distinguish policy-backed outcomes from model suggestions or missing rules.
+- Dependency injection validates the fallback contract offline without credentials, network traffic, or provider cost.
+- Generative output should not become an authorization or safety decision unless a separate, auditable validation and governance design makes that use appropriate.
