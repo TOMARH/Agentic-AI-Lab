@@ -6,3 +6,4 @@ Record durable architecture choices here. Suggested naming: NNNN-short-title.md.
 - [ADR 0005: Route BlobCreated events through Event Grid to the existing Service Bus queue](0005-eventgrid-to-existing-servicebus.md)
 
 - [0006. Consumer Idempotency and Dead-Letter Management](0006-consumer-idempotency-and-dead-letter-management.md)
+- [ADR 0007: Publish typed decision events to the existing queue](0007-decision-events-to-existing-servicebus.md)

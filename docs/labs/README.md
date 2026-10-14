@@ -9,3 +9,4 @@ Use this section for dated lab objectives, implementation notes, validation evid
 - [Azure sprint — Day 5: Blob events through Event Grid to Service Bus](azure-sprint-day-05.md)
 - [Azure sprint — Day 8: Dead-letter queue inspection and replay tooling](azure-sprint-day-08.md)
 - [Azure sprint — Day 9: Local decision model, rules, typed results, and optional LLM](azure-sprint-day-09.md)
+- [Azure sprint — Day 10: Publish typed decisions through existing Service Bus](azure-sprint-day-10.md)
