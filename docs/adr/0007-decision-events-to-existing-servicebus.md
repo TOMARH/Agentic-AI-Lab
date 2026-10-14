@@ -12,9 +12,9 @@ The existing `integration-events` queue accepts JSON messages. Its Function cons
 
 ## Decision
 
-Add an operator-invoked local producer that serializes a decision into a versioned `ArchitectureDecision.Created` JSON envelope and sends it to the existing `integration-events` queue. Authenticate with `DefaultAzureCredential` and the existing queue-scoped Azure Service Bus Data Sender assignment. Preserve the Day 9 decision source and rationale in the event body. Use the Service Bus message ID for the event ID, a W3C `traceparent` in application properties, and JSON content type.
+Add an operator-invoked local producer that serializes a decision into a versioned `ArchitectureDecision.Created` JSON envelope and sends it to the existing `integration-events` queue. Authenticate with `DefaultAzureCredential` and the existing queue-scoped Azure Service Bus Data Sender assignment. Preserve the Day 9 decision source and rationale in the event body, and include machine-readable `advisory: true` in the envelope for every source. Use the Service Bus message ID for the event ID, a W3C `traceparent` in application properties, and JSON content type.
 
-Do not change the consumer, queue, namespace, identities, role assignments, or infrastructure. A model-generated recommendation remains advisory data; this producer does not execute it or convert it into authorization or policy.
+Do not change the consumer, queue, namespace, identities, role assignments, or infrastructure. Every event is explicitly advisory; this producer does not execute a recommendation or convert it into authorization or policy.
 
 ## Alternatives considered
 
@@ -26,9 +26,10 @@ Do not change the consumer, queue, namespace, identities, role assignments, or i
 
 - Day 9 provenance travels with the event and survives asynchronous decoupling.
 - Schema versioning permits future consumers to evolve deliberately.
-- The existing consumer can accept the message without a code or deployment change.
-- A single send incurs normal Service Bus operation usage; the existing Standard namespace's recurring charge continues. No new Azure resource is added.
-- The queue remains at-least-once. The event ID is useful for downstream deduplication, but the existing Function's in-memory idempotency set is not a durable business-level dedupe store.
+- The existing generic JSON consumer accepted the smoke-test message without a code or deployment change; see the correlated trace evidence in the Day 10 lab. This observation does not establish compatibility for future schema changes.
+- Every envelope is marked `advisory: true`, so consumers can reject attempts to treat a decision event as authorization or an executable command.
+- The Standard tier includes the first 13 million messaging operations each month; the smoke test used one send operation, but total subscription usage against that allowance was not verified. The existing Standard namespace's base charge continues. No new Azure resource is added.
+- The queue remains at-least-once. Duplicate detection is disabled on the existing queue. A retry after an ambiguous send timeout can therefore enqueue a duplicate even when the retry reuses the same event ID. Consumers still need idempotent handling; the existing Function's in-memory set is not a durable business-level dedupe store.
 - Confidential topics and model suggestions must not be sent unless provider and organizational data-handling rules permit them.
 
 ## References

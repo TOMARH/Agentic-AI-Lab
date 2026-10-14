@@ -1,4 +1,5 @@
 import json
+import sys
 from datetime import datetime, timezone
 from importlib import import_module
 from unittest.mock import MagicMock, Mock
@@ -20,6 +21,7 @@ def test_event_keeps_day9_decision_provenance_and_schema():
     assert event == {
         "eventType": "ArchitectureDecision.Created",
         "schemaVersion": 1,
+        "advisory": True,
         "eventId": "event-001",
         "occurredAt": "2026-10-14T10:00:00Z",
         "decision": {
@@ -34,8 +36,16 @@ def test_event_keeps_day9_decision_provenance_and_schema():
 def test_event_keeps_unmatched_decision_explicit():
     event = publisher.build_decision_event(decision_model.decide("event sourcing"))
 
+    assert event["advisory"] is True
     assert event["decision"]["source"] == "unmatched"
     assert event["decision"]["recommendation"] == "No specific principle found for this topic."
+
+
+def test_llm_decisions_are_marked_advisory():
+    decision = decision_model.decide("event sourcing", llm=lambda _topic: "Use immutable events.")
+
+    assert decision.source == "llm"
+    assert publisher.build_decision_event(decision)["advisory"] is True
 
 
 def test_event_rejects_naive_timestamp():
@@ -44,6 +54,25 @@ def test_event_rejects_naive_timestamp():
 
     with pytest.raises(ValueError, match="timezone-aware"):
         publisher.build_decision_event(decision, occurred_at=naive_time)
+
+
+def test_publish_rejects_event_larger_than_safe_body_limit_before_authentication():
+    decision = decision_model.Decision(
+        topic="messaging",
+        recommendation="r" * (publisher.MAX_EVENT_BODY_BYTES + 1),
+        source="rule",
+        rationale="test",
+    )
+    credential_factory = Mock()
+
+    with pytest.raises(ValueError, match="producer limit"):
+        publisher.publish_decision(
+            decision,
+            namespace="example.servicebus.windows.net",
+            credential_factory=credential_factory,
+        )
+
+    credential_factory.assert_not_called()
 
 
 def test_publish_sends_json_with_trace_context_and_closes_credential():
@@ -94,9 +123,18 @@ def test_publish_rejects_invalid_trace_context_before_connecting():
     with pytest.raises(ValueError, match="trace_id must be 32 hex chars"):
         publisher.publish_decision(
             decision_model.decide("api"),
+            namespace="example.servicebus.windows.net",
             credential_factory=credential_factory,
             trace_id="bad",
             span_id="b" * 16,
         )
 
     credential_factory.assert_not_called()
+
+
+def test_cli_requires_explicit_namespace(monkeypatch):
+    monkeypatch.delenv("SERVICE_BUS_FQDN", raising=False)
+    monkeypatch.setattr(sys, "argv", ["publish_decision", "messaging"])
+
+    with pytest.raises(SystemExit, match="2"):
+        publisher.main()

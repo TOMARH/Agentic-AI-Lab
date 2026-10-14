@@ -2,7 +2,7 @@ name: Python quality gates
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, feat/azure-sprint-day-09]
   push:
     branches: [main]
   workflow_dispatch:
