@@ -2,9 +2,8 @@ import json
 from types import SimpleNamespace
 from unittest.mock import Mock
 
-import pytest
-
 import function_app
+import pytest
 
 
 def test_missing_storage_url_returns_configuration_error(monkeypatch):
@@ -128,6 +127,34 @@ def test_service_bus_consumer_idempotency_skips_duplicate():
     fake_message.delivery_count = 2
     fake_message.get_body = Mock(side_effect=AssertionError("Should not parse body on duplicate"))
     function_app.service_bus_queue_consumer(fake_message)
+    fake_message.get_body.assert_not_called()
+    assert function_app.PROCESSED_MESSAGE_IDS == {"msg-duplicate-test"}
+
+
+def test_service_bus_consumer_retry_after_failure_is_processed_once():
+    function_app.PROCESSED_MESSAGE_IDS.clear()
+    fake_message = SimpleNamespace(
+        message_id="msg-retry-after-failure",
+        delivery_count=1,
+        correlation_id=None,
+        application_properties={},
+        get_body=Mock(return_value=b'{"simulate_poison": true}'),
+    )
+
+    with pytest.raises(ValueError, match="Poison message delivery failure simulation"):
+        function_app.service_bus_queue_consumer(fake_message)
+    assert "msg-retry-after-failure" not in function_app.PROCESSED_MESSAGE_IDS
+
+    fake_message.delivery_count = 2
+    fake_message.get_body = Mock(return_value=b'{"status": "recovered"}')
+    function_app.service_bus_queue_consumer(fake_message)
+    fake_message.get_body.assert_called_once()
+    assert "msg-retry-after-failure" in function_app.PROCESSED_MESSAGE_IDS
+
+    fake_message.delivery_count = 3
+    function_app.service_bus_queue_consumer(fake_message)
+    fake_message.get_body.assert_called_once()
+    assert function_app.PROCESSED_MESSAGE_IDS == {"msg-retry-after-failure"}
 
 
 def test_service_bus_consumer_raises_on_simulated_poison_payload():
