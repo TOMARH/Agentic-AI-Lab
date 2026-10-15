@@ -38,3 +38,23 @@
   - *Answer:* "We enforce defense in depth at three layers: first, the producer tags every decision with explicit provenance (`rule`, `llm`, or `unmatched`) and sets `advisory: true` in the versioned event schema; second, the downstream policy gate fails closed if `advisory` is not `True` and classifies all `llm` and `unmatched` sources as `non_actionable`; third, even when a deterministic `rule` topic passes the policy check (`pass_advisory`), the evaluation contract explicitly sets `authorizes_execution=False` and strips free-text `recommendation` and `rationale` fields from the structured audit record."
 - **Q: Why separate in-memory session deduplication from durable idempotency in your policy gate documentation?**
   - *Answer:* "In-memory deduplication (`seen_event_ids`) deterministically suppresses duplicate `eventId` deliveries within a single process or batch run, and we only record an `eventId` after structural validation passes so malformed payloads cannot poison the set. However, in a distributed serverless consumer with scale-out and restarts, true idempotency requires a durable state store or transactional outbox keyed by `eventId`."
+
+---
+
+## Days 12–14: Replay Reliability, Consumer Idempotency & Advisory Contracts
+
+### Core Concepts & Architecture Mechanics
+- **DLQ Replay Failure Windows (Day 12)**:
+  - Replay sends a replacement message before completing the original DLQ message. These are separate operations, so a send accepted with an ambiguous client result, or a successful send followed by failed completion, can leave the original available and produce a duplicate on replay. Preserving `message_id` does not guarantee broker deduplication, and the lab does not claim exactly-once delivery. Retrying an ambiguous send can also create another copy.
+- **Process-Local Consumer Idempotency (Day 13)**:
+  - `PROCESSED_MESSAGE_IDS` suppresses duplicate IDs only within one Python worker's lifetime. A failed decode, parse, or poison-handling attempt is not recorded, allowing a later retry; successful handling records the ID. The in-memory set is lost on restart, is not shared across workers, and has no durable retention policy. Preventing repeated production side effects requires durable idempotency state coordinated with the side effect.
+- **Publisher-to-Policy-Gate Advisory Contract (Day 14)**:
+  - Locally generated schema v1 events from the Day 10 publisher are evaluated by the Day 11 gate. Rule-backed events may pass the advisory check, while LLM outputs remain non-actionable and malformed or non-advisory envelopes are rejected. Every outcome keeps `actionable` and `authorizes_execution` false. Passing the gate is not execution authorization, and these local tests do not establish Service Bus delivery behavior.
+
+### Enterprise Interview Talking Points
+- **Q: What happens if replay sends a DLQ message but cannot complete the original?**
+  - *Answer:* "The two broker operations are not atomic in this flow. The original can remain in the DLQ after a replay copy was accepted, so a subsequent replay can duplicate it. I would describe this as at-least-once behavior with a duplicate window, then add consumer idempotency or reconciliation appropriate to the business side effect rather than claim exactly-once delivery."
+- **Q: Does an in-memory processed-message set provide idempotency in a scaled Function app?**
+  - *Answer:* "It suppresses repeats only within that worker process and is lost on restart; other workers do not share it. For side effects that must not repeat, I would use a durable key and coordinate recording it atomically with the side effect, while defining retention and retry behavior."
+- **Q: Does a policy-gate pass authorize an agent recommendation to execute?**
+  - *Answer:* "No. The publisher event remains advisory, and the gate's outcomes keep both `actionable` and `authorizes_execution` false. The local contract tests verify classification at the Python boundary; they do not prove broker delivery or grant execution permission."
