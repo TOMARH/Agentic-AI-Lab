@@ -18,9 +18,10 @@ Day 10 Event Envelope (ArchitectureDecision.Created, schemaVersion=1)
 scripts/day11/policy_gate.py :: evaluate_decision_event(event, seen_event_ids)
        |
        +-- 1. Structural & Contract Validation
-       |      - Mapping check, non-empty eventId
+       |      - Mapping check; eventId must match [A-Za-z0-9._:-]{1,128}
        |      - eventType == "ArchitectureDecision.Created"
-       |      - schemaVersion == 1 (strictly int, not bool)
+       |      - Invalid eventId is rejected and represented as "<invalid>" in the result
+       |      - schemaVersion must be the integer 1 (reject bool, float 1.0, and string "1")
        |      - advisory is True
        |      - decision mapping with valid source ("rule" | "llm" | "unmatched")
        |        and non-empty normalized topic
@@ -57,6 +58,12 @@ scripts/day11/policy_gate.py :: evaluate_decision_event(event, seen_event_ids)
 1. **No Execution Authority:** Every return path sets `actionable=False` and `authorizes_execution=False`. Even when a deterministic `rule` decision on an approved topic (`microservices`, `api`, `messaging`) achieves `outcome="pass_advisory"`, the evaluation explicitly states that it does not authorize automated execution or policy mutation.
 2. **Untrusted Text Isolation (Prompt-Injection & Data-Leakage Guard):** Free-text fields (`decision.recommendation` and `decision.rationale`) may originate from an external LLM or untrusted caller input. `evaluate_decision_event()` never copies, formats, or logs `recommendation` or `rationale` into `AuditRecord` or `PolicyEvaluation`.
 3. **Fail-Closed Envelope Validation:** Invalid envelopes are rejected before touching `seen_event_ids`, preventing malformed payloads with spoofed `eventId` values from poisoning the session deduplication set.
+4. **Event ID Validation and Audit Safety:** `eventId` must be a string of 1–128 ASCII
+   letters, digits, periods, underscores, colons, or hyphens. Invalid values—including
+   control characters, newlines, and oversized values—are rejected. The returned result
+   uses `<invalid>` rather than echoing the malformed identifier (`INVALID_EVENT_ID`); an
+   absent ID is reported as `<missing>` (`MISSING_EVENT_ID`). This is input validation,
+   not authentication of the event producer.
 
 ## 4. Assumptions and limitations
 
@@ -81,8 +88,12 @@ From the repository root in PowerShell:
 .\.venv\Scripts\python.exe -m scripts.day11.policy_gate messaging
 ```
 
-### Executed Validation Evidence (14 October 2026)
-* `ruff check scripts/day11 tests/test_policy_gate.py`: `All checks passed!` (exit code `0`).
-* `pytest tests/test_decision_model.py tests/test_decision_publisher.py tests/test_policy_gate.py -v`: **40 passed** 5 Day 9 + 16 Day 10 + 19 Day 11, exit code `0`).
-* `python -m compileall -q scripts/day11 tests/test_policy_gate.py`: passed (exit code `0`).
-* `git diff --check`: passed (exit code `0`).
+### Latest Validation Evidence (15 October 2026)
+
+- Full repository test suite: **67 passed in 2.57s**.
+- Full-suite command used a temporary `PYTHONPATH` pointing to `day2-function` so `function_app` could be imported during root-level test collection. The environment variable was removed after the run.
+- Day 11 targeted policy-gate suite: **26 passed in 0.95s**.
+- Repository-wide Ruff: **five findings** in existing files outside the Day 11 policy-gate scope. Targeted Day 11 Ruff checks passed.
+- Compilation: `python -m compileall -q scripts tests` completed without reported errors.
+- `git diff --check`: no whitespace errors; Git emitted LF-to-CRLF line-ending warnings.
+- No Azure resources were provisioned, and no live Service Bus or Gemini calls were made for this validation.

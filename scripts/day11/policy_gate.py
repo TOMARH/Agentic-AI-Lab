@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from collections.abc import Mapping, MutableSet
 from dataclasses import asdict, dataclass
 from importlib import import_module
@@ -20,6 +21,7 @@ SUPPORTED_EVENT_TYPE = "ArchitectureDecision.Created"
 SUPPORTED_SCHEMA_VERSION = 1
 VALID_SOURCES = frozenset({"rule", "llm", "unmatched"})
 ALLOWED_RULE_TOPICS = frozenset(PRINCIPLES.keys())
+EVENT_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 
 PolicyOutcomeStatus = Literal["pass_advisory", "non_actionable", "duplicate", "rejected"]
 ReasonCode = Literal[
@@ -33,6 +35,7 @@ ReasonCode = Literal[
     "UNSUPPORTED_EVENT_TYPE",
     "UNSUPPORTED_SCHEMA_VERSION",
     "MISSING_EVENT_ID",
+    "INVALID_EVENT_ID",
     "NON_ADVISORY_REJECTED",
     "INVALID_DECISION_PAYLOAD",
     "INVALID_DECISION_SOURCE",
@@ -113,23 +116,39 @@ def evaluate_decision_event(
         )
 
     raw_event_id = event.get("eventId")
-    event_id = raw_event_id.strip() if isinstance(raw_event_id, str) else ""
-    safe_event_id = event_id or "<missing>"
+
+    if raw_event_id is None:
+        return _result(
+            event_id="<missing>",
+            outcome="rejected",
+            reason_code="MISSING_EVENT_ID",
+            source="unknown",
+            notice="Rejected: eventId is required; does not authorize execution.",
+        )
+
+    if (
+        not isinstance(raw_event_id, str)
+        or EVENT_ID_PATTERN.fullmatch(raw_event_id) is None
+    ):
+        return _result(
+            event_id="<invalid>",
+            outcome="rejected",
+            reason_code="INVALID_EVENT_ID",
+            source="unknown",
+            notice=(
+                "Rejected: eventId must contain 1–128 ASCII letters, digits, "
+                "periods, underscores, colons, or hyphens; does not authorize execution."
+            ),
+        )
+
+    event_id = raw_event_id
+    safe_event_id = event_id
 
     raw_decision = event.get("decision")
     raw_source = raw_decision.get("source") if isinstance(raw_decision, Mapping) else None
     safe_source = (
         raw_source if isinstance(raw_source, str) and raw_source in VALID_SOURCES else "unknown"
     )
-
-    if not event_id:
-        return _result(
-            event_id="<missing>",
-            outcome="rejected",
-            reason_code="MISSING_EVENT_ID",
-            source=safe_source,
-            notice="Rejected: eventId must be a non-empty string; does not authorize execution.",
-        )
 
     if event.get("eventType") != SUPPORTED_EVENT_TYPE:
         return _result(
@@ -141,7 +160,10 @@ def evaluate_decision_event(
         )
 
     schema_version = event.get("schemaVersion")
-    if isinstance(schema_version, bool) or schema_version != SUPPORTED_SCHEMA_VERSION:
+    if (
+        type(schema_version) is not int
+        or schema_version != SUPPORTED_SCHEMA_VERSION
+    ):
         return _result(
             event_id=safe_event_id,
             outcome="rejected",

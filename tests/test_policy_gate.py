@@ -66,6 +66,20 @@ def test_rule_source_with_unapproved_topic_is_non_actionable():
     assert result.authorizes_execution is False
     assert "does not authorize execution" in result.notice
 
+def test_hostile_event_id_is_rejected_without_leaking_raw_value():
+    hostile_id = "evt-hostile\nINJECTED-\x1b[31m" + ("X" * 129)
+    event = _sample_event(topic="messaging", event_id=hostile_id)
+
+    result = policy_gate.evaluate_decision_event(event)
+
+    assert result.outcome == "rejected"
+    assert result.reason_code == "INVALID_EVENT_ID"
+    assert result.event_id == "<invalid>"
+    assert hostile_id not in repr(result)
+    assert "INJECTED" not in repr(result)
+    assert result.actionable is False
+    assert result.authorizes_execution is False
+
 @pytest.mark.parametrize(
     "recommendation",
     [
@@ -152,11 +166,17 @@ def test_duplicate_event_id_is_detected_deterministically_in_session():
 @pytest.mark.parametrize(
     ("mutator", "expected_reason", "expected_event_id"),
     [
-        (lambda e: e.update({"eventId": "   "}), "MISSING_EVENT_ID", "<missing>"),
+        (lambda e: e.update({"eventId": "   "}), "INVALID_EVENT_ID", "<invalid>"),
         (lambda e: e.pop("eventId"), "MISSING_EVENT_ID", "<missing>"),
+        (lambda e: e.update({"eventId": None}), "MISSING_EVENT_ID", "<missing>"),
+        (lambda e: e.update({"eventId": 123}), "INVALID_EVENT_ID", "<invalid>"),
+        (lambda e: e.update({"eventId": "bad\nINJECTED"}), "INVALID_EVENT_ID", "<invalid>"),
+        (lambda e: e.update({"eventId": "x" * 129}), "INVALID_EVENT_ID", "<invalid>"),
         (lambda e: e.update({"eventType": "Other.Event"}), "UNSUPPORTED_EVENT_TYPE", "evt-100"),
         (lambda e: e.update({"schemaVersion": 2}), "UNSUPPORTED_SCHEMA_VERSION", "evt-100"),
         (lambda e: e.update({"schemaVersion": True}), "UNSUPPORTED_SCHEMA_VERSION", "evt-100"),
+        (lambda e: e.update({"schemaVersion": 1.0}), "UNSUPPORTED_SCHEMA_VERSION", "evt-100"),
+        (lambda e: e.update({"schemaVersion": "1"}), "UNSUPPORTED_SCHEMA_VERSION", "evt-100"),
         (lambda e: e.update({"advisory": False}), "NON_ADVISORY_REJECTED", "evt-100"),
         (lambda e: e.update({"advisory": "true"}), "NON_ADVISORY_REJECTED", "evt-100"),
         (lambda e: e.update({"decision": "not-a-dict"}), "INVALID_DECISION_PAYLOAD", "evt-100"),
