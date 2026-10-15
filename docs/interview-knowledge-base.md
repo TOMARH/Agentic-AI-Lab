@@ -1,3 +1,36 @@
+## Days 1–6: Azure Foundations, Identity, Event Routing & Consumer Reliability
+
+### Core Concepts & Architecture Mechanics
+- **Day 1 — Cost, identity, and Storage RBAC**: Budget alerts are monitoring signals, not spending caps. Authentication identifies a principal; authorization grants an operation at a scope. The lab created a user-assigned managed identity (UAMI) and assigned `Storage Blob Data Contributor` at the storage-account scope while keeping public Blob access disabled. Identity and role verification did not demonstrate workload token acquisition or Blob access.
+- **Day 2 — Identity-based Function access**: An Azure Functions Flex Consumption app used the existing UAMI for Functions host storage and business Blob access. Host settings and SDK settings served distinct purposes; the app listed the existing `incoming` container without a storage key or connection string. The record reports HTTP 200 and zero blobs, a successful list operation rather than a failed access.
+- **Day 3 — Logic Apps orchestration**: A stateful Consumption workflow called the existing Day 2 Function through a managed-identity-authenticated HTTP action, using a dedicated Logic App UAMI distinct from the Function UAMI. The successful run reached the Function; a separate unauthenticated request was rejected, and a deliberate bad-route run entered the diagnostic failure Scope. The final workflow was restored to the successful route.
+- **Day 4 — Service Bus queue**: A durable queue decouples producers and consumers. Queue-scoped sender and receiver roles keep producer and consumer permissions separate; the existing namespace is a shared sprint dependency and should not be removed as part of later lab cleanup.
+- **Day 5 — Event Grid to Service Bus**: A Storage system topic filtered BlobCreated events under `incoming` and delivered them to the existing Service Bus queue using its system-assigned identity and queue-scoped `Azure Service Bus Data Sender`. The documented marker upload produced one match and one successful delivery. Event Grid retry and Service Bus dead-letter behavior are distinct; no Event Grid Blob dead-letter store was configured because the available pattern required broader Storage access on a shared account.
+- **Day 6 — Consumer idempotency and Service Bus DLQ**: At-least-once delivery means a consumer may see a message more than once. The Function's in-memory processed-ID set suppresses repeats only in one warm process; it is not durable across restarts or shared across instances. Validate poison payloads and inspect the Service Bus entity's DLQ separately from Event Grid delivery failures.
+
+### Enterprise Interview Talking Points
+- **Q: Does creating a managed identity prove that an application can access Storage?**
+  - *Answer:* "No. Identity creation establishes the principal, and an RBAC assignment establishes an authorization rule at a scope. I still need to show the workload receives a token for that identity and successfully performs the intended data operation."
+- **Q: How do Event Grid and Service Bus fit together, and where do failures go?**
+  - *Answer:* "Event Grid filters and routes Blob events; Service Bus provides a durable work queue for the consumer. Event Grid delivery retries and Service Bus message delivery/DLQ are separate stages, so I monitor each boundary and make the consumer safe for repeated delivery."
+- **Q: Is an in-memory processed-message set production idempotency?**
+  - *Answer:* "It only suppresses repeats within one worker's lifetime. Production side effects need a durable idempotency key coordinated with the side effect and a defined retention policy."
+
+---
+
+## Day 8: Dead-letter inspection and replay tooling
+
+### Core Concepts & Architecture Mechanics
+- The attended CLI separates non-destructive DLQ peeking from receiving a message under peek-lock for replay. Operators need Service Bus Data Receiver to inspect/complete DLQ messages and Data Sender to seed/replay messages.
+- Replay sends the replacement before completing the original. Those are not atomic operations: send success followed by completion failure can leave both the replayed copy and original DLQ message available. Preserving `message_id` does not guarantee broker deduplication.
+- Remediation is opt-in and fail-closed: malformed JSON or a missing active `simulate_poison` flag is neither sent nor completed. A valid simulated poison payload can be changed to `simulate_poison: false` and marked `remediated: true`.
+- Replay preserves message ID, correlation ID, content type, and application properties, then records replay attempt and original dead-letter reason. The Day 8 test record uses mocked Service Bus clients to verify ordering and failure handling.
+
+### Enterprise Interview Talking Point
+- **Q: What is the duplicate risk in a DLQ replay workflow?**
+  - *Answer:* "The send and completion are separate broker operations. If the send is accepted but completion fails, the original remains in the DLQ and another replay may create a duplicate. I describe the duplicate window honestly and use consumer idempotency or reconciliation; I do not claim exactly-once delivery."
+
+---
 ## Day 7: Distributed Tracing, W3C Context & Telemetry Correlation
 
 ### Core Concepts & Architecture Mechanics
