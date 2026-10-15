@@ -91,3 +91,21 @@
   - *Answer:* "It suppresses repeats only within that worker process and is lost on restart; other workers do not share it. For side effects that must not repeat, I would use a durable key and coordinate recording it atomically with the side effect, while defining retention and retry behavior."
 - **Q: Does a policy-gate pass authorize an agent recommendation to execute?**
   - *Answer:* "No. The publisher event remains advisory, and the gate's outcomes keep both `actionable` and `authorizes_execution` false. The local contract tests verify classification at the Python boundary; they do not prove broker delivery or grant execution permission."
+
+---
+
+## Days 15–17: Serialized Policy Boundary and Offline Reliability
+
+### Core Concepts & Architecture Mechanics
+- **Day 15 — Serialized publisher-to-policy boundary**:
+  - The offline boundary parses a serialized Day 10 decision event and delegates validation and policy evaluation to the Day 11 gate. It returns only the sanitized audit record, excluding recommendation and rationale text. Invalid JSON propagates as a decoding error; duplicate tracking is an optional caller-owned, in-memory set. This is not a broker adapter and does not establish transport settlement.
+- **Day 16 — Reliability and idempotency design**:
+  - The design maps ambiguous publisher sends, at-least-once delivery, identity mismatches between broker `message_id` and body `eventId`, process-local deduplication, concurrent workers, replay completion failures, and missing durable audit persistence. Durable idempotency requires a canonical stable key and an atomic durable boundary coordinating the key, audit, and any side effect. Day 16 is a design deliverable; no such store or consumer implementation was added.
+- **Day 17 — Parse failure and retry eligibility**:
+  - The offline test verifies malformed JSON propagates without adding an ID to the in-memory set; a valid retry can then pass, and a later repeat is identified as a duplicate. This is evidence about the Python boundary only. It does not verify broker retries, settlement, dead-letter routing, cross-worker behavior, restart recovery, or durable idempotency.
+
+### Enterprise Interview Talking Points
+- **Q: Does catching a JSON error and keeping an in-memory ID set prove retry-safe Service Bus processing?**
+  - *Answer:* "No. Our offline contract lets JSON decoding failures propagate without recording an event ID, so a valid retry is not suppressed by local state. A successful repeat is recognized only within the caller's in-memory set. Broker settlement and DLQ behavior require integration evidence, and reliable side effects across workers or restarts require durable idempotency coordinated atomically with the effect."
+- **Q: What does the Day 15 policy boundary return, and does a pass authorize execution?**
+  - *Answer:* "It returns the policy gate's sanitized audit record and omits free-text recommendation and rationale. A pass is advisory; it keeps both `actionable` and `authorizes_execution` false. The boundary is offline and does not prove message delivery."

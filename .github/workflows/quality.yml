@@ -29,10 +29,10 @@ jobs:
         run: python -m pip install -r requirements.txt -r requirements-dev.txt
 
       - name: Lint decision integration and policy gate
-        run: ruff check scripts/day10 scripts/day11 tests/test_decision_publisher.py tests/test_policy_gate.py
+        run: ruff check scripts/day10 scripts/day11 scripts/day15 tests/test_decision_publisher.py tests/test_policy_gate.py tests/test_day15_offline_boundary.py
 
       - name: Test local decision, messaging, and policy gate contracts
-        run: python -m pytest tests/test_decision_model.py tests/test_decision_publisher.py tests/test_policy_gate.py -v
+        run: python -m pytest tests/test_decision_model.py tests/test_decision_publisher.py tests/test_policy_gate.py tests/test_day15_offline_boundary.py -v
 
   day2-function:
     name: Day 2 Function / lint, tests, coverage
