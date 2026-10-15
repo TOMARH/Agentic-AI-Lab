@@ -16,3 +16,6 @@ Use this section for dated lab objectives, implementation notes, validation evid
 - [Azure sprint — Day 12: Dead-letter replay failure semantics](azure-sprint-day-12.md)
 - [Azure sprint — Day 13: Consumer duplicate-delivery behavior](azure-sprint-day-13.md)
 - [Azure sprint — Day 14: Publisher-to-policy-gate contract](azure-sprint-day-14.md)
+- [Azure sprint — Day 15: Offline serialized decision boundary](azure-sprint-day-15.md)
+- [Azure sprint — Day 16: Offline reliability and idempotency design](azure-sprint-day-16.md)
+- [Azure sprint — Day 17: Offline retry and duplicate reliability contract](azure-sprint-day-17.md)
