@@ -10,3 +10,7 @@ Use this section for dated lab objectives, implementation notes, validation evid
 - [Azure sprint — Day 8: Dead-letter queue inspection and replay tooling](azure-sprint-day-08.md)
 - [Azure sprint — Day 9: Local decision model, rules, typed results, and optional LLM](azure-sprint-day-09.md)
 - [Azure sprint — Day 10: Publish typed decisions through existing Service Bus](azure-sprint-day-10.md)
+- [Azure sprint — Day 11: Local policy gate and structured audit evaluation](azure-sprint-day-11.md)
+- [Azure sprint — Day 12: Dead-letter replay failure semantics](azure-sprint-day-12.md)
+- [Azure sprint — Day 13: Consumer duplicate-delivery behavior](azure-sprint-day-13.md)
+- [Azure sprint — Day 14: Publisher-to-policy-gate contract](azure-sprint-day-14.md)
