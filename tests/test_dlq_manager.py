@@ -167,3 +167,44 @@ def test_replay_dlq_remediate_missing_poison_flag_fails_closed(mock_servicebus, 
 
     captured = capsys.readouterr()
     assert "Failed to patch payload for msg-OTHER-500" in captured.out
+
+
+def test_replay_dlq_send_failure_does_not_complete_original(mock_servicebus):
+    msg = MagicMock()
+    msg.message_id = "msg-SEND-FAIL"
+    msg.correlation_id = "corr-send-fail"
+    msg.content_type = "application/json"
+    msg.dead_letter_reason = "MaxDeliveryCountExceeded"
+    msg.application_properties = {}
+    msg.body = [b'{"order_id": "send-fail"}']
+
+    mock_servicebus["receiver"].receive_messages.return_value = [msg]
+    mock_servicebus["sender"].send_messages.side_effect = RuntimeError(
+        "simulated send failure"
+    )
+
+    with pytest.raises(RuntimeError, match="simulated send failure"):
+        replay_dlq(max_messages=1)
+
+    mock_servicebus["receiver"].complete_message.assert_not_called()
+
+
+def test_replay_dlq_completion_failure_surfaces_after_send(mock_servicebus):
+    msg = MagicMock()
+    msg.message_id = "msg-COMPLETE-FAIL"
+    msg.correlation_id = "corr-complete-fail"
+    msg.content_type = "application/json"
+    msg.dead_letter_reason = "MaxDeliveryCountExceeded"
+    msg.application_properties = {}
+    msg.body = [b'{"order_id": "complete-fail"}']
+
+    mock_servicebus["receiver"].receive_messages.return_value = [msg]
+    mock_servicebus["receiver"].complete_message.side_effect = RuntimeError(
+        "simulated completion failure"
+    )
+
+    with pytest.raises(RuntimeError, match="simulated completion failure"):
+        replay_dlq(max_messages=1)
+
+    mock_servicebus["sender"].send_messages.assert_called_once()
+    mock_servicebus["receiver"].complete_message.assert_called_once_with(msg)
