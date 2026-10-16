@@ -33,6 +33,8 @@ The repository will grow incrementally: agent foundations, Azure platform and in
 
 ## Sprint starting point
 
+- [Azure sprint roadmap](docs/azure-integration-sprint-roadmap.md)
+
 - [Day 1: Azure cost guardrails and subscription readiness](docs/labs/azure-sprint-day-01.md)
 - [Day 2: Flex Consumption Function and identity-based Blob access](docs/labs/azure-sprint-day-02.md)
 - [Day 5: Blob events through Event Grid to Service Bus](docs/labs/azure-sprint-day-05.md)
