@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -80,6 +81,88 @@ def test_blob_error_returns_generic_server_error(monkeypatch):
     assert response.status_code == 500
     payload = json.loads(response.get_body().decode("utf-8"))
     assert payload["error"] == "Failed to list blobs"
+
+
+def test_blob_identity_demo_missing_configuration_returns_500(monkeypatch):
+    monkeypatch.delenv("BLOB_STORAGE_ACCOUNT_URL", raising=False)
+    response = function_app.blob_identity_demo(SimpleNamespace(params={}))
+
+    assert response.status_code == 500
+    assert response.get_body().decode("utf-8") == "BLOB_STORAGE_ACCOUNT_URL is not configured."
+
+
+def test_blob_identity_demo_lists_blobs_with_managed_identity(monkeypatch):
+    monkeypatch.setenv("BLOB_STORAGE_ACCOUNT_URL", "https://mockstorage.blob.core.windows.net")
+    monkeypatch.setenv("BLOB_CONTAINER_NAME", "day18-input")
+
+    fake_credential = Mock()
+    monkeypatch.setattr(function_app, "DefaultAzureCredential", Mock(return_value=fake_credential))
+    fake_container = Mock()
+    fake_container.list_blobs.return_value = [
+        SimpleNamespace(name="one.json"),
+        SimpleNamespace(name="two.json"),
+    ]
+    fake_service = Mock()
+    fake_service.get_container_client.return_value = fake_container
+    mock_service_class = Mock(return_value=fake_service)
+    monkeypatch.setattr(function_app, "BlobServiceClient", mock_service_class)
+
+    response = function_app.blob_identity_demo(SimpleNamespace(params={}))
+
+    assert response.status_code == 200
+    assert response.get_body().decode("utf-8") == (
+        "Container 'day18-input' contains 2 blob(s): one.json, two.json"
+    )
+    mock_service_class.assert_called_once_with(
+        account_url="https://mockstorage.blob.core.windows.net",
+        credential=fake_credential,
+    )
+    fake_service.get_container_client.assert_called_once_with("day18-input")
+
+
+def test_blob_identity_demo_defaults_container_and_handles_blob_errors(monkeypatch):
+    monkeypatch.setenv("BLOB_STORAGE_ACCOUNT_URL", "https://mockstorage.blob.core.windows.net")
+    monkeypatch.delenv("BLOB_CONTAINER_NAME", raising=False)
+    monkeypatch.setattr(function_app, "DefaultAzureCredential", Mock())
+    fake_container = Mock()
+    fake_container.list_blobs.side_effect = RuntimeError("storage unavailable")
+    fake_service = Mock()
+    fake_service.get_container_client.return_value = fake_container
+    monkeypatch.setattr(function_app, "BlobServiceClient", Mock(return_value=fake_service))
+
+    response = function_app.blob_identity_demo(SimpleNamespace(params={}))
+
+    assert response.status_code == 500
+    assert response.get_body().decode("utf-8") == (
+        "Blob access failed. Check the Function configuration and Azure permissions."
+    )
+    fake_service.get_container_client.assert_called_once_with("incoming")
+
+
+def test_day18_logic_app_route_contract_matches_function_and_service_bus():
+    contract_path = Path(__file__).parents[2] / "docs" / "architecture" / "day18-logicapp-contract.json"
+    contract = json.loads(contract_path.read_text(encoding="utf-8"))
+    function_contract = contract["function"]
+    workflow = contract["workflow"]
+
+    assert function_contract["route"] == function_app.BLOB_IDENTITY_DEMO_ROUTE
+    assert function_contract["methods"] == list(function_app.BLOB_IDENTITY_DEMO_METHODS)
+    assert function_contract["authLevel"] == "ANONYMOUS"
+    assert function_app.BLOB_IDENTITY_DEMO_AUTH_LEVEL == function_app.func.AuthLevel.ANONYMOUS
+    assert function_contract["storageEnvironment"] == [
+        "BLOB_STORAGE_ACCOUNT_URL",
+        "BLOB_CONTAINER_NAME",
+    ]
+
+    actions = workflow["actions"]
+    http_action = actions["HTTP"]
+    send_action = actions["Send_ServiceBus_Message"]
+    assert http_action["inputs"]["method"] == function_contract["methods"][0]
+    assert http_action["inputs"]["uri"].endswith(f"/api/{function_contract['route']}")
+    assert http_action["inputs"]["authentication"]["audience"] == "https://management.azure.com"
+    assert send_action["inputs"]["method"] == "POST"
+    assert send_action["runAfter"] == {"HTTP": ["Succeeded"]}
+    assert "/integration-events/messages?timeout=60" in send_action["inputs"]["uri"]
 
 
 def test_service_bus_consumer_logs_metadata_without_body():

@@ -11,6 +11,10 @@ logger = logging.getLogger(__name__)
 
 app = func.FunctionApp()
 
+BLOB_IDENTITY_DEMO_ROUTE = "blobidentitydemo"
+BLOB_IDENTITY_DEMO_METHODS = ("GET",)
+BLOB_IDENTITY_DEMO_AUTH_LEVEL = func.AuthLevel.ANONYMOUS
+
 # In-memory store for idempotency tracking across invocations within the process instance
 PROCESSED_MESSAGE_IDS: set[str] = set()
 
@@ -193,4 +197,46 @@ def list_blobs(req: func.HttpRequest) -> func.HttpResponse:
             body=json.dumps({"error": "Failed to list blobs"}),
             status_code=500,
             mimetype="application/json",
+        )
+
+
+@app.route(
+    route=BLOB_IDENTITY_DEMO_ROUTE,
+    methods=list(BLOB_IDENTITY_DEMO_METHODS),
+    auth_level=BLOB_IDENTITY_DEMO_AUTH_LEVEL,
+)
+def blob_identity_demo(req: func.HttpRequest) -> func.HttpResponse:
+    """Serve the managed-identity Blob route consumed by the Day 3 Logic App.
+
+    App Service Authentication validates the Logic App's managed-identity bearer
+    token before this anonymous-level Functions route is reached.
+    """
+    logger.info("Processing BlobIdentityDemo request.")
+    storage_account_url = os.environ.get("BLOB_STORAGE_ACCOUNT_URL")
+    container_name = os.environ.get("BLOB_CONTAINER_NAME", "incoming")
+
+    if not storage_account_url:
+        return func.HttpResponse(
+            "BLOB_STORAGE_ACCOUNT_URL is not configured.",
+            status_code=500,
+        )
+
+    try:
+        credential = DefaultAzureCredential()
+        blob_service_client = BlobServiceClient(
+            account_url=storage_account_url,
+            credential=credential,
+        )
+        container_client = blob_service_client.get_container_client(container_name)
+        blobs = [blob.name for blob in container_client.list_blobs()]
+        return func.HttpResponse(
+            f"Container '{container_name}' contains {len(blobs)} blob(s): "
+            + ", ".join(blobs),
+            status_code=200,
+        )
+    except Exception:
+        logger.exception("Blob access failed.")
+        return func.HttpResponse(
+            "Blob access failed. Check the Function configuration and Azure permissions.",
+            status_code=500,
         )
