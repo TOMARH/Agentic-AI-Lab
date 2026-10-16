@@ -1,0 +1,80 @@
+{
+  "source": "Sanitized definition read from la-day3-orchestration in Azure on 2026-10-16",
+  "workflow": {
+    "trigger": {
+      "name": "When_an_HTTP_request_is_received",
+      "type": "Request",
+      "method": "GET"
+    },
+    "actions": {
+      "HTTP": {
+        "type": "Http",
+        "inputs": {
+          "method": "GET",
+          "uri": "https://<function-app-host>/api/blobidentitydemo",
+          "authentication": {
+            "type": "ManagedServiceIdentity",
+            "audience": "https://management.azure.com",
+            "identity": "<user-assigned-identity-resource-id>"
+          }
+        },
+        "runAfter": {}
+      },
+      "Handle_Function_Failure": {
+        "type": "Scope",
+        "runAfter": {
+          "HTTP": ["Failed", "TimedOut"]
+        },
+        "actions": {
+          "Compose_Failure_Details": {
+            "type": "Compose",
+            "inputs": "Function call failed or timed out. Check the HTTP action run details for the underlying error."
+          }
+        }
+      },
+      "Send_ServiceBus_Message": {
+        "type": "Http",
+        "inputs": {
+          "method": "POST",
+          "uri": "https://<namespace>.servicebus.windows.net/integration-events/messages?timeout=60",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "authentication": {
+            "type": "ManagedServiceIdentity",
+            "audience": "https://servicebus.azure.net/",
+            "identity": "<user-assigned-identity-resource-id>"
+          },
+          "body": {
+            "eventId": "@workflow().run.name",
+            "eventType": "day4-integration-event"
+          }
+        },
+        "runAfter": {
+          "HTTP": ["Succeeded"]
+        }
+      }
+    }
+  },
+  "function": {
+    "route": "blobidentitydemo",
+    "methods": ["GET"],
+    "authLevel": "ANONYMOUS",
+    "platformAuthentication": {
+      "provider": "App Service Authentication v2 / Microsoft Entra ID",
+      "requireAuthentication": true,
+      "unauthenticatedClientAction": "Return401",
+      "allowedAudiences": ["https://management.azure.com"]
+    },
+    "storageEnvironment": [
+      "BLOB_STORAGE_ACCOUNT_URL",
+      "BLOB_CONTAINER_NAME"
+    ]
+  },
+  "serviceBus": {
+    "queue": "integration-events",
+    "functionConsumer": "ServiceBusQueueConsumer",
+    "connectionSetting": "SERVICE_BUS_CONNECTION"
+  },
+  "sanitization": "Subscription, resource group, app, namespace, and managed identity identifiers are represented by placeholders. No secrets or trigger URL were exported."
+}

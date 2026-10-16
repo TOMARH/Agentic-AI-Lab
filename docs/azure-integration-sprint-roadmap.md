@@ -41,7 +41,8 @@ The following is a reconstruction from earlier chat discussions, not a verified 
 | 8–11 | Service Bus, Functions and integration exercises | Reported closed within documented scopes |
 | 12–14 | Typed decisions, policy controls and LLM-related experiments | Reported closed within documented scopes |
 | 15–17 | Reliability, idempotency, failure handling and architecture evidence | Merged to main; documented limitations remain |
-| 18–20 | Event Grid / Event Hubs phase | Planned focus requires confirmation |
+| 18 | Logic App / Function managed-identity route reconciliation | Closed 16 October 2026; tests, deployed route, authenticated workflow run, consumer processing and queue/DLQ state verified |
+| 19–20 | Event Grid / Event Hubs phase | Planned focus requires confirmation |
 | 21–22 | Integration work | Exact deliverables unconfirmed |
 | 23–25 | API Management (APIM) | Exact deliverables unconfirmed |
 | 26–27 | Agentic AI integration | Exact deliverables unconfirmed |
@@ -51,7 +52,7 @@ The exact day-to-topic mapping and date boundaries have not been verified agains
 
 ## 4. Progress baseline — 16 October 2026
 
-- Days 1–17 were reported closed within their documented scopes.
+- Days 1–18 were reported closed within their documented scopes; Day 18 live evidence is in [the Day 18 lab record](labs/azure-sprint-day-18.md).
 - PR #14 merged Days 15–17 into main at `6ff95fd37cef32ba394440956ae059c30de1e114`.
 - Merged lab documentation, tests and runtime evidence are the source of truth for completed work.
 - Distinguish local tests, configuration inspection and live Azure runtime validation.
@@ -94,7 +95,7 @@ A day is closed when:
 ## 8. Open questions
 
 - Recover or confirm the original day-by-day schedule.
-- Confirm Day 18 objectives and acceptance criteria.
+- Confirm Day 19–20 objectives and acceptance criteria against the original day-by-day plan.
 - Verify current promotional-credit balance and expiry.
 - Confirm capstone scenario and final deliverables.
 

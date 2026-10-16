@@ -21,3 +21,4 @@ Use this section for dated lab objectives, implementation notes, validation evid
 - [Azure sprint — Day 15: Offline serialized decision boundary](azure-sprint-day-15.md)
 - [Azure sprint — Day 16: Offline reliability and idempotency design](azure-sprint-day-16.md)
 - [Azure sprint — Day 17: Offline retry and duplicate reliability contract](azure-sprint-day-17.md)
+- [Azure sprint — Day 18: Restore the Logic App Blob identity route](azure-sprint-day-18.md)
